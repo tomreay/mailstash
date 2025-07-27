@@ -1,0 +1,228 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model EmailAccount {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  displayName String?
+  provider    String   // "gmail", "imap", etc.
+  accessToken String?
+  refreshToken String?
+  expiresAt   DateTime?
+  isActive    Boolean  @default(true)
+  
+  // Gmail-specific fields
+  gmailId     String?  @unique
+  
+  // IMAP-specific fields
+  imapHost    String?
+  imapPort    Int?
+  imapSecure  Boolean?
+  imapUser    String?
+  imapPass    String?
+  
+  emails      Email[]
+  folders     Folder[]
+  syncStatus  SyncStatus?
+  filterRules FilterRule[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@map("email_accounts")
+}
+
+model Folder {
+  id          String   @id @default(cuid())
+  name        String
+  path        String
+  accountId   String
+  account     EmailAccount  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  
+  // Gmail-specific fields
+  gmailLabelId String?
+  
+  emails      Email[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@unique([accountId, path])
+  @@map("folders")
+}
+
+model Email {
+  id            String   @id @default(cuid())
+  messageId     String   @unique
+  threadId      String?
+  
+  // Basic email fields
+  subject       String?
+  from          String
+  to            String
+  cc            String?
+  bcc           String?
+  replyTo       String?
+  date          DateTime
+  
+  // Content
+  textContent   String?
+  htmlContent   String?
+  
+  // Metadata
+  hasAttachments Boolean  @default(false)
+  isRead        Boolean  @default(false)
+  isImportant   Boolean  @default(false)
+  isSpam        Boolean  @default(false)
+  isArchived    Boolean  @default(false)
+  isDeleted     Boolean  @default(false)
+  
+  // Email classification
+  category      String?  // "inbox", "sent", "drafts", "spam", "trash"
+  labels        String?  // JSON array of labels
+  
+  // Storage
+  emlPath       String?  // Path to EML file
+  size          Int?     // Size in bytes
+  
+  // Relations
+  accountId     String
+  account       EmailAccount  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  folderId      String?
+  folder        Folder?  @relation(fields: [folderId], references: [id])
+  
+  attachments   Attachment[]
+  
+  // Gmail-specific fields
+  gmailId       String?
+  gmailThreadId String?
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  @@index([accountId])
+  @@index([messageId])
+  @@index([date])
+  @@index([isDeleted])
+  @@map("emails")
+}
+
+model Attachment {
+  id          String   @id @default(cuid())
+  filename    String
+  contentType String
+  size        Int
+  filePath    String   // Path to attachment file
+  isScanned   Boolean  @default(false)
+  scanResult  String?  // "clean", "virus", "error"
+  
+  emailId     String
+  email       Email    @relation(fields: [emailId], references: [id], onDelete: Cascade)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@map("attachments")
+}
+
+model SyncStatus {
+  id          String   @id @default(cuid())
+  accountId   String   @unique
+  account     EmailAccount  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  
+  lastSyncAt  DateTime?
+  syncStatus  String   @default("idle") // "idle", "syncing", "error"
+  errorMessage String?
+  
+  // Gmail-specific sync tracking
+  gmailHistoryId String?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@map("sync_status")
+}
+
+model FilterRule {
+  id          String   @id @default(cuid())
+  name        String
+  accountId   String
+  account     EmailAccount  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  
+  // Rule conditions (JSON)
+  conditions  String   // JSON object with conditions
+  
+  // Rule actions
+  action      String   // "delete", "archive", "label", "move"
+  actionValue String?  // Target folder, label, etc.
+  
+  isActive    Boolean  @default(true)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@map("filter_rules")
+}
+
+model User {
+  id            String          @id @default(cuid())
+  name          String?
+  email         String?         @unique
+  emailVerified DateTime?
+  image         String?
+  accounts      Account[]
+  sessions      Session[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
