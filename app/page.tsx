@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Mail, Archive, Search, Settings, LogOut } from 'lucide-react'
+import { Mail, Archive, Search, Settings, LogOut, Loader2 } from 'lucide-react'
 
 export default function Home() {
   const { data: session, status } = useSession()
@@ -18,16 +18,68 @@ export default function Home() {
     totalSize: 0,
     lastSync: null,
   })
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'error'>('idle')
+  const [syncError, setSyncError] = useState<string | null>(null)
 
   useEffect(() => {
     if (session) {
-      // Fetch user stats
-      fetch('/api/stats')
-        .then(res => res.json())
-        .then(data => setStats(data))
-        .catch(err => console.error('Error fetching stats:', err))
+      fetchStats()
+      fetchSyncStatus()
     }
   }, [session])
+
+  const fetchStats = async () => {
+    try {
+      const res = await fetch('/api/stats')
+      const data = await res.json()
+      setStats(data)
+    } catch (err) {
+      console.error('Error fetching stats:', err)
+    }
+  }
+
+  const fetchSyncStatus = async () => {
+    try {
+      const res = await fetch('/api/sync')
+      const data = await res.json()
+      setSyncStatus(data.status || 'idle')
+      setSyncError(data.error || null)
+    } catch (err) {
+      console.error('Error fetching sync status:', err)
+    }
+  }
+
+  const handleSync = async () => {
+    try {
+      setSyncStatus('syncing')
+      setSyncError(null)
+      
+      const res = await fetch('/api/sync', { method: 'POST' })
+      const data = await res.json()
+      
+      if (!res.ok) {
+        throw new Error(data.error || 'Sync failed')
+      }
+      
+      // Poll for sync status
+      const pollInterval = setInterval(async () => {
+        const statusRes = await fetch('/api/sync')
+        const statusData = await statusRes.json()
+        
+        setSyncStatus(statusData.status || 'idle')
+        setSyncError(statusData.error || null)
+        
+        if (statusData.status !== 'syncing') {
+          clearInterval(pollInterval)
+          // Refresh stats after sync completes
+          fetchStats()
+        }
+      }, 2000)
+    } catch (err) {
+      setSyncStatus('error')
+      setSyncError(err instanceof Error ? err.message : 'Sync failed')
+    }
+  }
 
   if (status === 'loading') {
     return (
@@ -192,9 +244,18 @@ export default function Home() {
                 <Search className="h-4 w-4 mr-2" />
                 Search Archive
               </Button>
-              <Button className="w-full justify-start" variant="outline">
-                <Archive className="h-4 w-4 mr-2" />
-                Sync Now
+              <Button 
+                className="w-full justify-start" 
+                variant="outline"
+                onClick={handleSync}
+                disabled={syncStatus === 'syncing'}
+              >
+                {syncStatus === 'syncing' ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Archive className="h-4 w-4 mr-2" />
+                )}
+                {syncStatus === 'syncing' ? 'Syncing...' : 'Sync Now'}
               </Button>
               <Button className="w-full justify-start" variant="outline">
                 <Settings className="h-4 w-4 mr-2" />
@@ -212,24 +273,50 @@ export default function Home() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                <div className="flex items-center">
-                  <Badge variant="secondary" className="mr-2">
-                    INFO
-                  </Badge>
-                  <span className="text-sm">Gmail sync completed successfully</span>
-                </div>
-                <div className="flex items-center">
-                  <Badge variant="secondary" className="mr-2">
-                    INFO
-                  </Badge>
-                  <span className="text-sm">5 new emails archived</span>
-                </div>
-                <div className="flex items-center">
-                  <Badge variant="secondary" className="mr-2">
-                    INFO
-                  </Badge>
-                  <span className="text-sm">Virus scan completed - all clean</span>
-                </div>
+                {syncStatus === 'syncing' && (
+                  <div className="flex items-center">
+                    <Badge variant="secondary" className="mr-2">
+                      SYNC
+                    </Badge>
+                    <span className="text-sm">Email synchronization in progress...</span>
+                  </div>
+                )}
+                {syncStatus === 'error' && syncError && (
+                  <div className="flex items-center">
+                    <Badge variant="destructive" className="mr-2">
+                      ERROR
+                    </Badge>
+                    <span className="text-sm">{syncError}</span>
+                  </div>
+                )}
+                {stats.lastSync && (
+                  <div className="flex items-center">
+                    <Badge variant="secondary" className="mr-2">
+                      INFO
+                    </Badge>
+                    <span className="text-sm">
+                      Last sync: {new Date(stats.lastSync).toLocaleString()}
+                    </span>
+                  </div>
+                )}
+                {stats.totalEmails > 0 && (
+                  <div className="flex items-center">
+                    <Badge variant="secondary" className="mr-2">
+                      INFO
+                    </Badge>
+                    <span className="text-sm">{stats.totalEmails} emails archived</span>
+                  </div>
+                )}
+                {!stats.lastSync && syncStatus === 'idle' && (
+                  <div className="flex items-center">
+                    <Badge variant="outline" className="mr-2">
+                      INFO
+                    </Badge>
+                    <span className="text-sm text-muted-foreground">
+                      No sync activity yet. Click "Sync Now" to start.
+                    </span>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
