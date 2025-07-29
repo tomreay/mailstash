@@ -59,7 +59,11 @@ export function QuickActions() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <Button className="w-full justify-start" variant="outline">
+        <Button 
+          className="w-full justify-start" 
+          variant="outline"
+          onClick={() => router.push('/emails')}
+        >
           <Mail className="h-4 w-4 mr-2" />
           View All Emails
         </Button>

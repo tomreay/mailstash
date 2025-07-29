@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
-import {auth} from "@/lib/auth";
-import {db} from "@/lib/db";
+import { auth } from '@/lib/auth'
+import { db } from '@/lib/db'
+import { StatsResponse } from '@/types'
 
 export async function GET() {
   try {
@@ -24,24 +25,41 @@ export async function GET() {
     })
 
     if (!account) {
-      return NextResponse.json({
+      const response: StatsResponse = {
         totalEmails: 0,
-        totalSize: 0,
-        lastSync: null,
-      })
+        unreadEmails: 0,
+        totalAttachments: 0,
+        storageUsed: 0,
+        lastSyncAt: null,
+        syncStatus: 'idle',
+      }
+      return NextResponse.json(response)
     }
 
-    // Get storage stats
-    const storageStats = await db.email.aggregate({
-      where: { accountId: account.id },
-      _sum: { size: true },
-    })
+    // Get additional stats
+    const [storageStats, unreadCount, attachmentCount] = await Promise.all([
+      db.email.aggregate({
+        where: { accountId: account.id },
+        _sum: { size: true },
+      }),
+      db.email.count({
+        where: { accountId: account.id, isRead: false },
+      }),
+      db.attachment.count({
+        where: { email: { accountId: account.id } },
+      }),
+    ])
 
-    return NextResponse.json({
+    const response: StatsResponse = {
       totalEmails: account._count.emails,
-      totalSize: storageStats._sum.size || 0,
-      lastSync: account.syncStatus?.lastSyncAt?.toISOString() || null,
-    })
+      unreadEmails: unreadCount,
+      totalAttachments: attachmentCount,
+      storageUsed: storageStats._sum.size || 0,
+      lastSyncAt: account.syncStatus?.lastSyncAt?.toISOString() || null,
+      syncStatus: (account.syncStatus?.syncStatus as 'idle' | 'syncing' | 'error') || 'idle',
+    }
+
+    return NextResponse.json(response)
   } catch (error) {
     console.error('Error fetching stats:', error)
     return NextResponse.json(

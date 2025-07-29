@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { syncService } from '@/lib/email/sync-service'
+import { SyncResponse } from '@/types'
 
 export async function POST() {
   try {
@@ -34,10 +35,12 @@ export async function POST() {
       console.error('Sync failed:', error)
     })
 
-    return NextResponse.json({ 
+    const response: SyncResponse = {
       message: 'Sync started successfully',
-      accountId: account.id 
-    })
+      accountId: account.id
+    }
+    
+    return NextResponse.json(response)
   } catch (error) {
     console.error('Error starting sync:', error)
     return NextResponse.json(
@@ -64,18 +67,21 @@ export async function GET() {
     })
 
     if (!account) {
-      return NextResponse.json({ 
+      const response: SyncResponse = {
         status: 'idle',
         lastSyncAt: null,
-        error: null 
-      })
+        error: null
+      }
+      return NextResponse.json(response)
     }
 
-    return NextResponse.json({
-      status: account.syncStatus?.syncStatus || 'idle',
+    const response: SyncResponse = {
+      status: (account.syncStatus?.syncStatus as 'idle' | 'syncing' | 'error') || 'idle',
       lastSyncAt: account.syncStatus?.lastSyncAt?.toISOString() || null,
       error: account.syncStatus?.errorMessage || null,
-    })
+    }
+    
+    return NextResponse.json(response)
   } catch (error) {
     console.error('Error fetching sync status:', error)
     return NextResponse.json(
