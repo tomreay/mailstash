@@ -76,16 +76,15 @@ export class GmailClient {
   }
 
   async getMessages(
-    labelId = 'INBOX',
     maxResults = 100,
     pageToken?: string
   ): Promise<{ messages: EmailMessage[]; nextPageToken?: string }> {
     try {
       const response = await this.gmail.users.messages.list({
         userId: 'me',
-        labelIds: [labelId],
         maxResults,
         pageToken,
+        // No labelIds means all messages
       })
 
       const messages = await Promise.all(
@@ -99,7 +98,7 @@ export class GmailClient {
     } catch (error) {
       if (isGoogleApiError(error) && error.code === 401) {
         await this.refreshAccessToken()
-        return this.getMessages(labelId, maxResults, pageToken)
+        return this.getMessages(maxResults, pageToken)
       }
       throw error
     }

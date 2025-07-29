@@ -1,3 +1,8 @@
+export interface ParsedEmailAddress {
+  name: string
+  email: string
+}
+
 export interface Folder {
   id: string
   name: string

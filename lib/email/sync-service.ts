@@ -98,38 +98,38 @@ export class SyncService {
       })
     }
 
-    // Sync messages from important labels
-    const labelsToSync = ['INBOX', 'SENT', 'DRAFT']
+    // Sync all messages regardless of label
+    let pageToken: string | undefined
+    let totalProcessed = 0
     
-    for (const labelId of labelsToSync) {
-      let pageToken: string | undefined
+    do {
+      const result = await client.getMessages(100, pageToken)
       
-      do {
-        const result = await client.getMessages(labelId, 50, pageToken)
-        
-        for (const message of result.messages) {
-          // Check if message already exists
-          const existingMessage = await db.email.findUnique({
-            where: { messageId: message.messageId },
-          })
+      for (const message of result.messages) {
+        // Check if message already exists
+        const existingMessage = await db.email.findUnique({
+          where: { messageId: message.messageId },
+        })
 
-          if (!existingMessage) {
-            // Get raw message content for EML storage
-            const rawContent = await client.getRawMessage(message.id)
-            
-            // Store the email
-            await this.storage.storeEmail(message, rawContent, account.id)
-            
-            // Scan attachments if any
-            if (message.hasAttachments) {
-              await this.scanEmailAttachments(message.messageId)
-            }
+        if (!existingMessage) {
+          // Get raw message content for EML storage
+          const rawContent = await client.getRawMessage(message.id)
+          
+          // Store the email
+          await this.storage.storeEmail(message, rawContent, account.id)
+          
+          // Scan attachments if any
+          if (message.hasAttachments) {
+            await this.scanEmailAttachments(message.messageId)
           }
         }
-        
-        pageToken = result.nextPageToken
-      } while (pageToken)
-    }
+      }
+      
+      totalProcessed += result.messages.length
+      console.log(`Processed ${totalProcessed} messages so far...`)
+      
+      pageToken = result.nextPageToken
+    } while (pageToken)
   }
 
   private async syncImapAccount(account: EmailAccount): Promise<void> {
