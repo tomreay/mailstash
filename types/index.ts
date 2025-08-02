@@ -24,8 +24,8 @@ export interface Email {
   bcc: string | null
   replyTo: string | null
   date: Date | string
-  textContent: string | null
-  htmlContent: string | null
+  textContent?: string | null
+  htmlContent?: string | null
   hasAttachments: boolean
   isRead: boolean
   isImportant: boolean

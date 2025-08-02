@@ -1,8 +1,26 @@
-version: '3.8'
-
 services:
+  postgres:
+    image: postgres:15
+    container_name: mailstash-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=mailstash
+      - POSTGRES_USER=mailstash
+      - POSTGRES_PASSWORD=mailstash_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mailstash -d mailstash"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
   clamav:
     image: clamav/clamav:latest
+    platform: linux/amd64
     container_name: mailstash-clamav
     ports:
       - "3310:3310"
@@ -18,24 +36,6 @@ services:
       start_period: 60s
     restart: unless-stopped
 
-  mailstash:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: mailstash-app
-    ports:
-      - "3000:3000"
-    environment:
-      - DATABASE_URL=file:./dev.db
-      - NEXTAUTH_URL=http://localhost:3000
-      - NEXTAUTH_SECRET=your-secret-key-here
-    volumes:
-      - ./storage:/app/storage
-      - ./dev.db:/app/dev.db
-    depends_on:
-      clamav:
-        condition: service_healthy
-    restart: unless-stopped
-
 volumes:
+  postgres_data:
   clamav_data:

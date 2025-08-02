@@ -2,10 +2,11 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { EmailDetail } from '@/types'
+import { parseEmlContent } from '@/lib/utils/eml-parser'
 
 export async function GET(
-  request: Request,
-  { params }: { params: { id: string } }
+  _: Request,
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth()
@@ -13,6 +14,9 @@ export async function GET(
     if (!session?.user?.email) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+
+    // Await params before accessing its properties
+    const { id } = await params
 
     // Get user's email account
     const account = await db.emailAccount.findUnique({
@@ -26,7 +30,7 @@ export async function GET(
     // Get the email
     const email = await db.email.findFirst({
       where: {
-        id: params.id,
+        id,
         accountId: account.id,
         isDeleted: false,
       },
@@ -48,9 +52,25 @@ export async function GET(
       })
     }
 
+    // Parse email content from EML file
+    let textContent: string | undefined
+    let htmlContent: string | undefined
+    
+    if (email.emlPath) {
+      try {
+        const content = await parseEmlContent(email.emlPath)
+        textContent = content.textContent
+        htmlContent = content.htmlContent
+      } catch (error) {
+        console.error('Error parsing EML file:', error)
+      }
+    }
+
     // Parse labels and format response
     const formattedEmail: EmailDetail = {
       ...email,
+      textContent,
+      htmlContent,
       date: email.date.toISOString(),
       createdAt: email.createdAt.toISOString() as any,
       updatedAt: email.updatedAt.toISOString() as any,

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { EmailsResponse, EmailListItem } from '@/types'
+import { parseEmlContent } from '@/lib/utils/eml-parser'
 
 export async function GET(request: Request) {
   try {
@@ -39,7 +40,7 @@ export async function GET(request: Request) {
         OR: [
           { subject: { contains: search, mode: 'insensitive' as const } },
           { from: { contains: search, mode: 'insensitive' as const } },
-          { textContent: { contains: search, mode: 'insensitive' as const } },
+          { to: { contains: search, mode: 'insensitive' as const } },
         ],
       }),
     }
@@ -62,18 +63,34 @@ export async function GET(request: Request) {
           isImportant: true,
           hasAttachments: true,
           labels: true,
-          textContent: true,
+          emlPath: true,
         },
       }),
       db.email.count({ where }),
     ])
 
     // Parse labels and create snippets
-    const formattedEmails: EmailListItem[] = emails.map(email => ({
-      ...email,
-      date: email.date.toISOString(),
-      labels: email.labels ? JSON.parse(email.labels) : [],
-      snippet: email.textContent ? email.textContent.substring(0, 200) + '...' : '',
+    const formattedEmails: EmailListItem[] = await Promise.all(emails.map(async email => {
+      let snippet = ''
+      
+      // Try to generate snippet from EML file
+      if (email.emlPath) {
+        try {
+          const content = await parseEmlContent(email.emlPath)
+          if (content.textContent) {
+            snippet = content.textContent.substring(0, 200) + '...'
+          }
+        } catch (error) {
+          console.error(`Error parsing EML for snippet (${email.id}):`, error)
+        }
+      }
+      
+      return {
+        ...email,
+        date: email.date.toISOString(),
+        labels: email.labels ? JSON.parse(email.labels) : [],
+        snippet,
+      }
     }))
 
     const response: EmailsResponse = {

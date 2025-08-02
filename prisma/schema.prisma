@@ -6,7 +6,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -51,6 +51,9 @@ model Folder {
   // Gmail-specific fields
   gmailLabelId String?
   
+  // IMAP-specific fields
+  lastImapUid  String?  // Track highest UID for incremental sync
+  
   emails      Email[]
   
   createdAt   DateTime @default(now())
@@ -74,9 +77,7 @@ model Email {
   replyTo       String?
   date          DateTime
   
-  // Content
-  textContent   String?
-  htmlContent   String?
+  // Content (removed - stored in EML files only)
   
   // Metadata
   hasAttachments Boolean  @default(false)
@@ -106,6 +107,9 @@ model Email {
   gmailId       String?
   gmailThreadId String?
   
+  // Sync tracking
+  syncedAt      DateTime? // When this email was last synced
+  
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   
@@ -113,6 +117,10 @@ model Email {
   @@index([messageId])
   @@index([date])
   @@index([isDeleted])
+  @@index([threadId])
+  @@index([accountId, folderId])
+  @@index([accountId, date])
+  @@index([syncedAt])
   @@map("emails")
 }
 
@@ -150,6 +158,26 @@ model SyncStatus {
   updatedAt   DateTime @updatedAt
   
   @@map("sync_status")
+}
+
+model SyncJob {
+  id           String   @id @default(cuid())
+  type         String   // "full_sync", "incremental_sync", "folder_sync"
+  status       String   // "pending", "processing", "completed", "failed"
+  accountId    String
+  metadata     Json?    // Job-specific data
+  attempts     Int      @default(0)
+  maxAttempts  Int      @default(3)
+  scheduledAt  DateTime @default(now())
+  startedAt    DateTime?
+  completedAt  DateTime?
+  error        String?  @db.Text
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  @@index([status, scheduledAt])
+  @@map("sync_jobs")
 }
 
 model FilterRule {
