@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { 
@@ -30,11 +30,7 @@ export default function EmailDetailPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    fetchEmail()
-  }, [params.id])
-
-  const fetchEmail = async () => {
+  const fetchEmail = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
@@ -59,7 +55,11 @@ export default function EmailDetailPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [params.id, router])
+
+  useEffect(() => {
+    void fetchEmail()
+  }, [fetchEmail])
 
 
   if (loading) {

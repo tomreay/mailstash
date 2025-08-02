@@ -11,6 +11,7 @@ export interface Folder {
   gmailLabelId: string | null
   createdAt: Date
   updatedAt: Date
+  lastImapUid: string | null
 }
 
 export interface Email {
@@ -101,6 +102,7 @@ export interface StatsResponse {
 export interface SyncResponse {
   message?: string
   accountId?: string
+  jobId?: string
   status?: 'idle' | 'syncing' | 'error'
   lastSyncAt?: string | null
   error?: string | null

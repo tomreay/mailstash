@@ -61,10 +61,10 @@ export interface EmailFolder {
 
 export interface SyncStatus {
   accountId: string
-  lastSyncAt?: Date
-  syncStatus: 'idle' | 'syncing' | 'error'
-  errorMessage?: string
-  gmailHistoryId?: string
+  lastSyncAt: Date | null
+  syncStatus: string
+  errorMessage: string | null
+  gmailHistoryId: string | null
 }
 
 export interface FilterRule {

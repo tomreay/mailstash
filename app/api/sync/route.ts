@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
-import { syncService } from '@/lib/email/sync-service'
+import { scheduleFullSync, scheduleIncrementalSync, getActiveJobs } from '@/lib/jobs/queue'
 import { SyncResponse } from '@/types'
 
 export async function POST() {
@@ -21,23 +21,32 @@ export async function POST() {
       return NextResponse.json({ error: 'Email account not found' }, { status: 404 })
     }
 
-    // Check if sync is already in progress
+    // Check if sync is already in progress by checking for active jobs
     const syncStatus = await db.syncStatus.findUnique({
       where: { accountId: account.id },
     })
 
-    if (syncStatus?.syncStatus === 'syncing') {
-      return NextResponse.json({ error: 'Sync already in progress' }, { status: 409 })
+    // Schedule appropriate sync job based on sync history
+    let job;
+    if (!syncStatus || !syncStatus.lastSyncAt) {
+      // First sync or no previous sync - schedule full sync
+      job = await scheduleFullSync(account.id, {}, { priority: 10 })
+    } else {
+      // Schedule incremental sync
+      job = await scheduleIncrementalSync(
+        account.id, 
+        {
+          lastSyncAt: syncStatus.lastSyncAt.toISOString(),
+          gmailHistoryId: syncStatus.gmailHistoryId || undefined,
+        },
+        { priority: 10 }
+      )
     }
 
-    // Trigger sync asynchronously
-    syncService.syncAccount(account.id).catch(error => {
-      console.error('Sync failed:', error)
-    })
-
     const response: SyncResponse = {
-      message: 'Sync started successfully',
-      accountId: account.id
+      message: 'Sync scheduled successfully',
+      accountId: account.id,
+      jobId: job.id
     }
     
     return NextResponse.json(response)
@@ -75,8 +84,15 @@ export async function GET() {
       return NextResponse.json(response)
     }
 
+    // Check for active sync jobs
+    const activeJobs = await getActiveJobs()
+    const isSyncing = activeJobs.some((job) => 
+      job.payload?.accountId === account.id &&
+      (job.task_identifier === 'email:full_sync' || job.task_identifier === 'email:incremental_sync')
+    )
+
     const response: SyncResponse = {
-      status: (account.syncStatus?.syncStatus as 'idle' | 'syncing' | 'error') || 'idle',
+      status: isSyncing ? 'syncing' : (account.syncStatus?.syncStatus as 'idle' | 'syncing' | 'error') || 'idle',
       lastSyncAt: account.syncStatus?.lastSyncAt?.toISOString() || null,
       error: account.syncStatus?.errorMessage || null,
     }

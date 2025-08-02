@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { Mail, ArrowLeft, Search, Calendar, User, Loader2 } from 'lucide-react'
+import {useState, useEffect, useCallback, FormEvent} from 'react'
+import { Mail, ArrowLeft, Search, Loader2 } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent } from '@/components/ui/card'
@@ -20,11 +20,7 @@ export default function EmailsPage() {
   const [totalPages, setTotalPages] = useState(1)
   const [total, setTotal] = useState(0)
 
-  useEffect(() => {
-    fetchEmails()
-  }, [currentPage, searchQuery])
-
-  const fetchEmails = async () => {
+  const fetchEmails = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
@@ -54,12 +50,16 @@ export default function EmailsPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [currentPage, searchQuery, router])
 
-  const handleSearch = (e: React.FormEvent) => {
+  useEffect(() => {
+    void fetchEmails()
+  }, [fetchEmails])
+
+  const handleSearch = (e: FormEvent) => {
     e.preventDefault()
     setCurrentPage(1)
-    fetchEmails()
+    void fetchEmails()
   }
 
 

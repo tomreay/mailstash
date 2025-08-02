@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
-import { EmailDetail } from '@/types'
 import { parseEmlContent } from '@/lib/utils/eml-parser'
 
 export async function GET(
@@ -67,23 +66,23 @@ export async function GET(
     }
 
     // Parse labels and format response
-    const formattedEmail: EmailDetail = {
+    const formattedEmail = {
       ...email,
       textContent,
       htmlContent,
       date: email.date.toISOString(),
-      createdAt: email.createdAt.toISOString() as any,
-      updatedAt: email.updatedAt.toISOString() as any,
+      createdAt: email.createdAt.toISOString(),
+      updatedAt: email.updatedAt.toISOString(),
       labels: email.labels ? JSON.parse(email.labels) : [],
       attachments: email.attachments.map(att => ({
         ...att,
-        createdAt: att.createdAt.toISOString() as any,
-        updatedAt: att.updatedAt.toISOString() as any,
+        createdAt: att.createdAt.toISOString(),
+        updatedAt: att.updatedAt.toISOString(),
       })),
       folder: email.folder ? {
         ...email.folder,
-        createdAt: email.folder.createdAt.toISOString() as any,
-        updatedAt: email.folder.updatedAt.toISOString() as any,
+        createdAt: email.folder.createdAt.toISOString(),
+        updatedAt: email.folder.updatedAt.toISOString(),
       } : null,
     }
 

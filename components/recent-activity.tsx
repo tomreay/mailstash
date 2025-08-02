@@ -110,7 +110,7 @@ export function RecentActivity() {
                 INFO
               </Badge>
               <span className="text-sm text-muted-foreground">
-                No sync activity yet. Click "Sync Now" to start.
+                No sync activity yet. Click &quot;Sync Now&quot; to start.
               </span>
             </div>
           )}
