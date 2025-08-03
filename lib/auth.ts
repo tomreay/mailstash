@@ -27,32 +27,45 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     }),
   ],
   callbacks: {
-    async signIn({ user, account }) {
-      if (account?.provider === 'google' && account.access_token) {
-        // Create or update the email account for syncing
-        console.log(`Upserting emailAccount for ${user.email}`)
-        await db.emailAccount.upsert({
-          where: {
-            email: user.email!,
-          },
-          update: {
-            accessToken: account.access_token,
-            refreshToken: account.refresh_token,
-            expiresAt: account.expires_at ? new Date(account.expires_at * 1000) : null,
-            gmailId: account.providerAccountId,
-          },
-          create: {
-            email: user.email!,
-            displayName: user.name || undefined,
-            provider: 'gmail',
-            accessToken: account.access_token,
-            refreshToken: account.refresh_token,
-            expiresAt: account.expires_at ? new Date(account.expires_at * 1000) : null,
-            gmailId: account.providerAccountId,
-          },
-        })
+    async session({ session, user }) {
+      if (session.user) {
+        session.user.id = user.id
       }
-      return true
+      return session
+    },
+  },
+  events: {
+    async linkAccount({ user, account }) {
+      // This event fires when an account is linked to a user (including first sign in)
+      if (account.provider === 'google' && account.access_token && user.email && user.id) {
+        try {
+          console.log(`Creating/updating emailAccount for ${user.email} after account link`)
+          await db.emailAccount.upsert({
+            where: {
+              email: user.email,
+            },
+            update: {
+              accessToken: account.access_token,
+              refreshToken: account.refresh_token,
+              expiresAt: account.expires_at ? new Date(account.expires_at * 1000) : null,
+              gmailId: account.providerAccountId,
+              userId: user.id,
+            },
+            create: {
+              email: user.email,
+              displayName: user.name || undefined,
+              provider: 'gmail',
+              accessToken: account.access_token,
+              refreshToken: account.refresh_token,
+              expiresAt: account.expires_at ? new Date(account.expires_at * 1000) : null,
+              gmailId: account.providerAccountId,
+              userId: user.id,
+            },
+          })
+        } catch (error) {
+          console.error('Error creating/updating email account:', error)
+        }
+      }
     },
   },
   pages: {

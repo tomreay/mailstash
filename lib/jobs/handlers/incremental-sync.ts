@@ -1,9 +1,8 @@
-import { Task } from 'graphile-worker';
+import {Task} from 'graphile-worker';
 import {EmailAccountWithSyncStatus, IncrementalSyncPayload, JobResult} from '../types';
-import { GmailClient } from '@/lib/email/gmail-client';
-import { ImapClient } from '@/lib/email/imap-client';
-import { EmailStorage } from '@/lib/storage/email-storage';
-import { db } from '@/lib/db';
+import {ImapClient} from '@/lib/email/imap-client';
+import {EmailStorage} from '@/lib/storage/email-storage';
+import {db} from '@/lib/db';
 
 export const incrementalSyncHandler: Task = async (
   payload,
