@@ -3,12 +3,6 @@ import {EmailAccount, SyncStatus} from "@/types/email";
 
 export interface SyncJobPayload {
   accountId: string;
-  metadata?: {
-    folderId?: string;
-    startDate?: string;
-    endDate?: string;
-    priority?: 'high' | 'normal' | 'low';
-  };
 }
 
 export interface FullSyncPayload extends SyncJobPayload {

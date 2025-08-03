@@ -107,3 +107,13 @@ export interface SyncResponse {
   lastSyncAt?: string | null
   error?: string | null
 }
+
+export interface SyncJob {
+  id: string
+  type: string
+  status: string
+  startedAt: Date | null
+  completedAt: Date | null
+  error: string | null
+  emailsProcessed: number
+}

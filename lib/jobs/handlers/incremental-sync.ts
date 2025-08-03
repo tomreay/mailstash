@@ -4,11 +4,13 @@ import {ImapClient} from '@/lib/email/imap-client';
 import {GmailClient} from '@/lib/email/gmail-client';
 import {EmailStorage} from '@/lib/storage/email-storage';
 import {db} from '@/lib/db';
+import {SyncJob} from "@/types";
 
 export const incrementalSyncHandler: Task = async (
   payload,
   helpers
 ) => {
+  let syncJob: SyncJob | null = null;
   const { accountId, lastSyncAt, gmailHistoryId, imapUidValidity } = payload as IncrementalSyncPayload;
   
   console.log(`[incremental-sync] Starting incremental sync for account ${accountId}`, {
@@ -18,6 +20,15 @@ export const incrementalSyncHandler: Task = async (
   });
   
   try {
+    // Create sync job record
+    syncJob = await db.syncJob.create({
+      data: {
+        type: 'incremental_sync',
+        status: 'processing',
+        accountId,
+        startedAt: new Date(),
+      },
+    });
     const account: EmailAccountWithSyncStatus | null = await db.emailAccount.findUnique({
       where: { id: accountId },
       include: { syncStatus: true },
@@ -54,6 +65,16 @@ export const incrementalSyncHandler: Task = async (
       },
     });
     
+    // Update job status to completed
+    await db.syncJob.update({
+      where: { id: syncJob.id },
+      data: {
+        status: 'completed',
+        completedAt: new Date(),
+        emailsProcessed: result.emailsProcessed || 0,
+      },
+    });
+    
     console.log(`[incremental-sync] Incremental sync completed for account ${accountId}`, result);
     
     // Schedule next incremental sync based on activity
@@ -70,6 +91,18 @@ export const incrementalSyncHandler: Task = async (
     
   } catch (error) {
     console.error(`[incremental-sync] Incremental sync failed for account ${accountId}`, error);
+    
+    // Update job status to failed
+    if (syncJob) {
+      await db.syncJob.update({
+        where: { id: syncJob.id },
+        data: {
+          status: 'failed',
+          error: error instanceof Error ? error.message : 'Unknown error',
+          completedAt: new Date(),
+        },
+      });
+    }
     
     // Check if it's a history gap error (Gmail specific)
     if (error instanceof Error && error.message.includes('history')) {

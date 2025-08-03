@@ -4,12 +4,13 @@ import {GmailClient} from '@/lib/email/gmail-client';
 import {ImapClient} from '@/lib/email/imap-client';
 import {EmailStorage} from '@/lib/storage/email-storage';
 import {db} from '@/lib/db';
-import {Folder} from "@/types";
+import {Folder, SyncJob} from "@/types";
 import {EmailAccount} from "@/types/email";
 
 export const folderSyncHandler: Task = async (
   payload
 ) => {
+  let syncJob: SyncJob | null = null;
   const { accountId, folderId, folderPath, lastImapUid } = payload as FolderSyncPayload;
   
   console.log(`[folder-sync] Starting folder sync for ${folderPath}`, {
@@ -19,6 +20,15 @@ export const folderSyncHandler: Task = async (
   });
   
   try {
+    // Create sync job record
+    syncJob = await db.syncJob.create({
+      data: {
+        type: 'folder_sync',
+        status: 'processing',
+        accountId,
+        startedAt: new Date(),
+      },
+    });
     const account: EmailAccountWithFolders | null = await db.emailAccount.findUnique({
       where: { id: accountId },
       include: { folders: { where: { id: folderId } } },
@@ -60,10 +70,33 @@ export const folderSyncHandler: Task = async (
       });
     }
     
+    // Update job status to completed
+    await db.syncJob.update({
+      where: { id: syncJob.id },
+      data: {
+        status: 'completed',
+        completedAt: new Date(),
+        emailsProcessed: result.emailsProcessed || 0,
+      },
+    });
+    
     console.log(`[folder-sync] Folder sync completed for ${folderPath}`, result);
     
   } catch (error) {
     console.error(`[folder-sync] Folder sync failed for ${folderPath}`, error);
+    
+    // Update job status to failed
+    if (syncJob) {
+      await db.syncJob.update({
+        where: { id: syncJob.id },
+        data: {
+          status: 'failed',
+          error: error instanceof Error ? error.message : 'Unknown error',
+          completedAt: new Date(),
+        },
+      });
+    }
+    
     throw error;
   }
 };
@@ -75,7 +108,7 @@ async function syncGmailFolder(
 ): Promise<JobResult> {
   const client = new GmailClient(account);
   let emailsProcessed = 0;
-  let pageToken: string | undefined;
+  let pageToken: string | undefined = undefined;
   
   do {
     const result = await client.getMessages(50, pageToken);

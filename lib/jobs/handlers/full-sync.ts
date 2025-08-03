@@ -2,16 +2,28 @@ import { Task } from 'graphile-worker';
 import { FullSyncPayload, JobResult } from '../types';
 import { syncService } from '@/lib/email/sync-service';
 import { db } from '@/lib/db';
+import {SyncJob} from "@/types";
 
 export const fullSyncHandler: Task = async (
   payload,
   helpers
 ) => {
-  const { accountId, metadata, resumeFromCheckpoint } = payload as FullSyncPayload;
+  let syncJob: SyncJob | null = null;
+  const { accountId, resumeFromCheckpoint } = payload as FullSyncPayload;
   
-  console.log(`[full-sync] Starting full sync for account ${accountId}`, { metadata });
+  console.log(`[full-sync] Starting full sync for account ${accountId}`);
 
   try {
+    // Create sync job record
+    syncJob = await db.syncJob.create({
+      data: {
+        type: 'full_sync',
+        status: 'processing',
+        accountId,
+        startedAt: new Date(),
+        emailsProcessed: 0,
+      },
+    });
     // Check if account exists and is active
     const account = await db.emailAccount.findUnique({
       where: { id: accountId },
@@ -52,13 +64,23 @@ export const fullSyncHandler: Task = async (
     // Perform the sync
     await syncService.syncAccount(accountId);
     
-    // Log completion
-    console.log(`[full-sync] Completed sync for account ${accountId}`);
-    
     // Get sync statistics
     const emailCount = await db.email.count({
       where: { accountId },
     });
+    
+    // Update job status to completed
+    await db.syncJob.update({
+      where: { id: syncJob.id },
+      data: {
+        status: 'completed',
+        completedAt: new Date(),
+        emailsProcessed: emailCount,
+      },
+    });
+    
+    // Log completion
+    console.log(`[full-sync] Completed sync for account ${accountId}`);
     
     const result: JobResult = {
       success: true,
@@ -96,6 +118,18 @@ export const fullSyncHandler: Task = async (
     
   } catch (error) {
     console.error(`[full-sync] Full sync failed for account ${accountId}`, error);
+    
+    // Update job status to failed
+    if (syncJob) {
+      await db.syncJob.update({
+        where: { id: syncJob.id },
+        data: {
+          status: 'failed',
+          error: error instanceof Error ? error.message : 'Unknown error',
+          completedAt: new Date(),
+        },
+      });
+    }
     
     // If this is a transient error, let graphile-worker retry
     if (error instanceof Error && isTransientError(error)) {
