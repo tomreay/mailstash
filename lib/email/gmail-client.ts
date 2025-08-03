@@ -1,6 +1,6 @@
 import { google, gmail_v1 } from 'googleapis'
 import { OAuth2Client } from 'google-auth-library'
-import { EmailMessage, EmailAccount, EmailFolder } from '@/types/email'
+import { EmailMessage, EmailAccount, EmailFolder, EmailAttachment } from '@/types/email'
 import { db } from '@/lib/db'
 
 interface GoogleApiError extends Error {
@@ -124,6 +124,9 @@ export class GmailClient {
 
       // Parse the message body
       const { textContent, htmlContent } = this.extractMessageContent(message.payload)
+      
+      // Extract attachments
+      const attachments = await this.extractAttachments(messageId, message.payload)
 
       return {
         id: message.id || '',
@@ -139,6 +142,7 @@ export class GmailClient {
         textContent,
         htmlContent,
         hasAttachments: this.hasAttachments(message.payload),
+        attachments,
         labels: message.labelIds || [],
         size: message.sizeEstimate || 0,
         isRead: !(message.labelIds || []).includes('UNREAD'),
@@ -207,6 +211,44 @@ export class GmailClient {
       )
     }
     return false
+  }
+
+  private async extractAttachments(messageId: string, payload: gmail_v1.Schema$MessagePart): Promise<EmailAttachment[]> {
+    const attachments: EmailAttachment[] = []
+    
+    const extractParts = async (parts: gmail_v1.Schema$MessagePart[]) => {
+      for (const part of parts) {
+        if (part.filename && part.filename.length > 0 && part.body?.attachmentId) {
+          try {
+            // Download the attachment
+            const attachmentResponse = await this.gmail.users.messages.attachments.get({
+              userId: 'me',
+              messageId,
+              id: part.body.attachmentId,
+            })
+            
+            if (attachmentResponse.data.data) {
+              attachments.push({
+                filename: part.filename,
+                contentType: part.mimeType || 'application/octet-stream',
+                size: part.body.size || 0,
+                content: Buffer.from(attachmentResponse.data.data, 'base64'),
+              })
+            }
+          } catch (error) {
+            console.error(`Error downloading attachment ${part.filename}:`, error)
+          }
+        } else if (part.parts) {
+          await extractParts(part.parts)
+        }
+      }
+    }
+    
+    if (payload.parts) {
+      await extractParts(payload.parts)
+    }
+    
+    return attachments
   }
 
   async getHistory(
