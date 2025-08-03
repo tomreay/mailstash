@@ -75,6 +75,11 @@ export class SyncService {
   private async syncGmailAccount(account: EmailAccount): Promise<void> {
     const client = new GmailClient(account)
     
+    // Get current history ID for future incremental syncs
+    const profile = await client.getProfile()
+    const currentHistoryId = profile.historyId
+    console.log(`Gmail profile for ${account.email}: historyId=${currentHistoryId}`)
+    
     // Sync folders/labels
     const labels = await client.getLabels()
     for (const label of labels) {
@@ -99,7 +104,7 @@ export class SyncService {
     }
 
     // Sync all messages regardless of label
-    let pageToken: string | undefined
+    let pageToken: string | undefined = undefined
     let totalProcessed = 0
     
     do {
@@ -130,6 +135,16 @@ export class SyncService {
       
       pageToken = result.nextPageToken
     } while (pageToken)
+    
+    // Update sync status with history ID for future incremental syncs
+    await db.syncStatus.update({
+      where: { accountId: account.id },
+      data: {
+        gmailHistoryId: currentHistoryId,
+      },
+    })
+    
+    console.log(`Gmail sync completed. History ID set to ${currentHistoryId} for incremental syncs`)
   }
 
   private async syncImapAccount(account: EmailAccount): Promise<void> {
@@ -217,23 +232,6 @@ export class SyncService {
 
     for (const attachment of attachments) {
       await virusScanner.scanAttachment(attachment.id, attachment.filePath)
-    }
-  }
-
-  async syncAllAccounts(): Promise<void> {
-    const accounts = await db.emailAccount.findMany({
-      where: { isActive: true },
-      select: { id: true },
-    })
-
-    console.log(`Starting sync for ${accounts.length} accounts`)
-
-    for (const account of accounts) {
-      try {
-        await this.syncAccount(account.id)
-      } catch (error) {
-        console.error(`Failed to sync account ${account.id}:`, error)
-      }
     }
   }
 }

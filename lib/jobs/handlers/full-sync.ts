@@ -67,6 +67,12 @@ export const fullSyncHandler: Task = async (
     
     console.log(`[full-sync] Full sync completed for account ${accountId}`, result);
     
+    // Get sync status to include history ID for Gmail accounts
+    const syncStatus = await db.syncStatus.findUnique({
+      where: { accountId },
+      select: { gmailHistoryId: true },
+    });
+    
     // Update sync status to idle
     await db.syncStatus.update({
       where: { accountId },
@@ -80,7 +86,11 @@ export const fullSyncHandler: Task = async (
     // Schedule next incremental sync in 5 minutes
     await helpers.addJob(
       'email:incremental_sync',
-      { accountId },
+      { 
+        accountId,
+        gmailHistoryId: syncStatus?.gmailHistoryId,
+        lastSyncAt: new Date().toISOString(),
+      },
       { runAt: new Date(Date.now() + 5 * 60 * 1000) }
     );
     

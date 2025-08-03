@@ -1,6 +1,7 @@
 import {Task} from 'graphile-worker';
 import {EmailAccountWithSyncStatus, IncrementalSyncPayload, JobResult} from '../types';
 import {ImapClient} from '@/lib/email/imap-client';
+import {GmailClient} from '@/lib/email/gmail-client';
 import {EmailStorage} from '@/lib/storage/email-storage';
 import {db} from '@/lib/db';
 
@@ -92,11 +93,154 @@ async function syncGmailIncremental(
     throw new Error('Missing history ID - full sync required');
   }
 
-  console.log(`[incremental-sync] Gmail history sync not implemented, falling back to full sync`);
+  console.log(`[incremental-sync] Starting Gmail history sync from historyId: ${startHistoryId}`);
 
-  // TODO: Implement getHistory method in GmailClient
-  // For now, throw error to trigger full sync
-  throw new Error('Gmail history sync not implemented');
+  const client = new GmailClient(account);
+  const storage = new EmailStorage();
+  let emailsProcessed = 0;
+  let newHistoryId = startHistoryId;
+
+  try {
+    // Get history changes since last sync
+    const historyResult = await client.getHistory(startHistoryId);
+    newHistoryId = historyResult.historyId;
+
+    console.log(`[incremental-sync] Found ${historyResult.messagesAdded.length} new messages, ${historyResult.messagesDeleted.length} deleted messages`);
+
+    // Process new messages
+    for (const messageId of historyResult.messagesAdded) {
+      try {
+        // Check if we already have this message
+        const existingEmail = await db.email.findFirst({
+          where: {
+            gmailId: messageId,
+            accountId: account.id,
+          },
+        });
+
+        if (!existingEmail) {
+          // Fetch full message details
+          const message = await client.getMessageDetails(messageId);
+          if (message) {
+            // Get the raw message for storage
+            const rawContent = await client.getRawMessage(messageId);
+            
+            // Store the email
+            await storage.storeEmail(
+              message,
+              rawContent,
+              account.id
+            );
+            emailsProcessed++;
+          }
+        }
+      } catch (error) {
+        console.error(`[incremental-sync] Error processing message ${messageId}:`, error);
+        // Continue with other messages
+      }
+    }
+
+    // Process deleted messages
+    for (const messageId of historyResult.messagesDeleted) {
+      try {
+        await db.email.updateMany({
+          where: {
+            gmailId: messageId,
+            accountId: account.id,
+          },
+          data: {
+            isDeleted: true,
+            updatedAt: new Date(),
+          },
+        });
+      } catch (error) {
+        console.error(`[incremental-sync] Error deleting message ${messageId}:`, error);
+      }
+    }
+
+    // Process label changes
+    for (const [messageId, labels] of historyResult.labelsAdded) {
+      try {
+        const email = await db.email.findFirst({
+          where: {
+            gmailId: messageId,
+            accountId: account.id,
+          },
+        });
+
+        if (email) {
+          // Update email flags based on labels
+          const updates: Record<string, boolean> = {};
+          if (labels.includes('UNREAD')) updates.isRead = false;
+          if (labels.includes('IMPORTANT')) updates.isImportant = true;
+          if (labels.includes('SPAM')) updates.isSpam = true;
+          if (labels.includes('TRASH')) updates.isDeleted = true;
+          if (!labels.includes('INBOX')) updates.isArchived = true;
+
+          await db.email.update({
+            where: { id: email.id },
+            data: {
+              ...updates,
+              labels: JSON.stringify(labels),
+              updatedAt: new Date(),
+            },
+          });
+        }
+      } catch (error) {
+        console.error(`[incremental-sync] Error updating labels for message ${messageId}:`, error);
+      }
+    }
+
+    // Process removed labels
+    for (const [messageId, labels] of historyResult.labelsRemoved) {
+      try {
+        const email = await db.email.findFirst({
+          where: {
+            gmailId: messageId,
+            accountId: account.id,
+          },
+        });
+
+        if (email) {
+          // Update email flags based on removed labels
+          const updates: Record<string, boolean> = {};
+          if (labels.includes('UNREAD')) updates.isRead = true;
+          if (labels.includes('IMPORTANT')) updates.isImportant = false;
+          if (labels.includes('SPAM')) updates.isSpam = false;
+          if (labels.includes('TRASH')) updates.isDeleted = false;
+          if (labels.includes('INBOX')) updates.isArchived = true;
+
+          await db.email.update({
+            where: { id: email.id },
+            data: {
+              ...updates,
+              updatedAt: new Date(),
+            },
+          });
+        }
+      } catch (error) {
+        console.error(`[incremental-sync] Error removing labels for message ${messageId}:`, error);
+      }
+    }
+
+    return {
+      success: true,
+      emailsProcessed,
+      nextSyncData: {
+        gmailHistoryId: newHistoryId,
+      },
+    };
+  } catch (error) {
+    // Check if it's a history gap error
+    if (error instanceof Error && 
+        (error.message.includes('Invalid history id') || 
+         error.message.includes('historyId') ||
+         ('code' in error && (error as Error & { code: number }).code === 404))) {
+      console.log('[incremental-sync] History gap detected, falling back to full sync');
+      throw new Error('History gap detected - full sync required');
+    }
+    throw error;
+  }
 }
 
 async function syncImapIncremental(
@@ -125,25 +269,59 @@ async function syncImapIncremental(
       
       console.log(`[incremental-sync] Syncing IMAP folder ${folder.path}`);
       
-      // Get messages since last sync
+      // Use a combination of UID and date-based sync for efficiency
       const lastSyncDate = account.syncStatus?.lastSyncAt || 
         new Date(Date.now() - 7 * 24 * 60 * 60 * 1000); // 7 days ago
       
-      const messages = await client.getMessages(folder.path, 100, lastSyncDate);
+      // Get messages since last sync date
+      const messages = await client.getMessages(folder.path, 500, lastSyncDate); // Increased limit for incremental
+      
+      console.log(`[incremental-sync] Found ${messages.length} messages in ${folder.path} since ${lastSyncDate.toISOString()}`);
+      
+      // Process messages efficiently
+      const messageIds = messages.map(m => m.messageId);
+      const existingMessages = await db.email.findMany({
+        where: {
+          messageId: { in: messageIds },
+          accountId: account.id,
+        },
+        select: { messageId: true },
+      });
+      
+      const existingMessageIds = new Set(existingMessages.map(m => m.messageId));
       
       for (const message of messages) {
-        const existingMessage = await db.email.findUnique({
-          where: { messageId: message.messageId },
-        });
-        
-        if (!existingMessage) {
-          const rawContent = await client.getRawMessage(folder.path, parseInt(message.id));
-          await storage.storeEmail(message, rawContent, account.id);
-          emailsProcessed++;
+        if (!existingMessageIds.has(message.messageId)) {
+          try {
+            const rawContent = await client.getRawMessage(folder.path, parseInt(message.id));
+            await storage.storeEmail(
+              message,
+              rawContent,
+              account.id
+            );
+            emailsProcessed++;
+          } catch (error) {
+            console.error(`[incremental-sync] Error storing message ${message.messageId}:`, error);
+            // Continue with other messages
+          }
+        } else {
+          // Update flags for existing messages
+          await db.email.updateMany({
+            where: {
+              messageId: message.messageId,
+              accountId: account.id,
+            },
+            data: {
+              isRead: message.isRead,
+              isImportant: message.isImportant,
+              isDeleted: message.isDeleted,
+              updatedAt: new Date(),
+            },
+          });
         }
       }
       
-      // Update folder's last UID
+      // Update folder's last UID for future reference
       const lastUid = messages.length > 0 ? messages[messages.length - 1].id : folder.lastImapUid;
       if (lastUid) {
         await db.folder.update({

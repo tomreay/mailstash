@@ -12,7 +12,7 @@ function isGoogleApiError(error: unknown): error is GoogleApiError {
 }
 
 export class GmailClient {
-  private oauth2Client: OAuth2Client
+  private readonly oauth2Client: OAuth2Client
   private gmail: gmail_v1.Gmail
 
   constructor(private account: EmailAccount) {
@@ -171,39 +171,6 @@ export class GmailClient {
     }
   }
 
-  async deleteMessage(messageId: string): Promise<void> {
-    try {
-      await this.gmail.users.messages.delete({
-        userId: 'me',
-        id: messageId,
-      })
-    } catch (error) {
-      if (isGoogleApiError(error) && error.code === 401) {
-        await this.refreshAccessToken()
-        return this.deleteMessage(messageId)
-      }
-      throw error
-    }
-  }
-
-  async archiveMessage(messageId: string): Promise<void> {
-    try {
-      await this.gmail.users.messages.modify({
-        userId: 'me',
-        id: messageId,
-        requestBody: {
-          removeLabelIds: ['INBOX'],
-        },
-      })
-    } catch (error) {
-      if (isGoogleApiError(error) && error.code === 401) {
-        await this.refreshAccessToken()
-        return this.archiveMessage(messageId)
-      }
-      throw error
-    }
-  }
-
   private extractMessageContent(payload: gmail_v1.Schema$MessagePart): { textContent?: string; htmlContent?: string } {
     let textContent = ''
     let htmlContent = ''
@@ -240,5 +207,130 @@ export class GmailClient {
       )
     }
     return false
+  }
+
+  async getHistory(
+    startHistoryId: string,
+    maxResults = 500
+  ): Promise<{
+    history: gmail_v1.Schema$History[];
+    historyId: string;
+    messagesAdded: string[];
+    messagesDeleted: string[];
+    labelsAdded: Map<string, string[]>;
+    labelsRemoved: Map<string, string[]>;
+  }> {
+    try {
+      const response = await this.gmail.users.history.list({
+        userId: 'me',
+        startHistoryId,
+        maxResults,
+        historyTypes: ['messageAdded', 'messageDeleted', 'labelAdded', 'labelRemoved'],
+      });
+
+      if (!response.data.history) {
+        return {
+          history: [],
+          historyId: response.data.historyId || startHistoryId,
+          messagesAdded: [],
+          messagesDeleted: [],
+          labelsAdded: new Map(),
+          labelsRemoved: new Map(),
+        };
+      }
+
+      const messagesAdded = new Set<string>();
+      const messagesDeleted = new Set<string>();
+      const labelsAdded = new Map<string, Set<string>>();
+      const labelsRemoved = new Map<string, Set<string>>();
+
+      for (const historyItem of response.data.history) {
+        // Process added messages
+        if (historyItem.messagesAdded) {
+          for (const msg of historyItem.messagesAdded) {
+            if (msg.message?.id) {
+              messagesAdded.add(msg.message.id);
+            }
+          }
+        }
+
+        // Process deleted messages
+        if (historyItem.messagesDeleted) {
+          for (const msg of historyItem.messagesDeleted) {
+            if (msg.message?.id) {
+              messagesDeleted.add(msg.message.id);
+            }
+          }
+        }
+
+        // Process added labels
+        if (historyItem.labelsAdded) {
+          for (const labelChange of historyItem.labelsAdded) {
+            if (labelChange.message?.id && labelChange.labelIds) {
+              const messageId = labelChange.message.id;
+              if (!labelsAdded.has(messageId)) {
+                labelsAdded.set(messageId, new Set());
+              }
+              labelChange.labelIds.forEach(labelId => 
+                labelsAdded.get(messageId)!.add(labelId)
+              );
+            }
+          }
+        }
+
+        // Process removed labels
+        if (historyItem.labelsRemoved) {
+          for (const labelChange of historyItem.labelsRemoved) {
+            if (labelChange.message?.id && labelChange.labelIds) {
+              const messageId = labelChange.message.id;
+              if (!labelsRemoved.has(messageId)) {
+                labelsRemoved.set(messageId, new Set());
+              }
+              labelChange.labelIds.forEach(labelId => 
+                labelsRemoved.get(messageId)!.add(labelId)
+              );
+            }
+          }
+        }
+      }
+
+      return {
+        history: response.data.history,
+        historyId: response.data.historyId || startHistoryId,
+        messagesAdded: Array.from(messagesAdded),
+        messagesDeleted: Array.from(messagesDeleted),
+        labelsAdded: new Map(Array.from(labelsAdded.entries()).map(
+          ([k, v]) => [k, Array.from(v)]
+        )),
+        labelsRemoved: new Map(Array.from(labelsRemoved.entries()).map(
+          ([k, v]) => [k, Array.from(v)]
+        )),
+      };
+    } catch (error) {
+      if (isGoogleApiError(error) && error.code === 401) {
+        await this.refreshAccessToken();
+        return this.getHistory(startHistoryId, maxResults);
+      }
+      throw error;
+    }
+  }
+
+  async getProfile(): Promise<{ emailAddress: string; historyId: string }> {
+    try {
+      const response = await this.gmail.users.getProfile({
+        userId: 'me',
+      });
+
+      return {
+        emailAddress: response.data.emailAddress || '',
+        historyId: response.data.historyId || '',
+      };
+    } catch (error) {
+      if (isGoogleApiError(error) && error.code === 401) {
+        await this.refreshAccessToken();
+        return this.getProfile();
+      }
+      throw error;
+    }
   }
 }
