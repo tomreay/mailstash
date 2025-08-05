@@ -38,6 +38,7 @@ model EmailAccount {
   folders     Folder[]
   syncStatus  SyncStatus?
   filterRules FilterRule[]
+  settings    EmailAccountSettings?
   
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -204,6 +205,27 @@ model FilterRule {
   updatedAt   DateTime @updatedAt
   
   @@map("filter_rules")
+}
+
+model EmailAccountSettings {
+  id          String   @id @default(cuid())
+  accountId   String   @unique
+  account     EmailAccount  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  
+  // Sync frequency settings
+  syncFrequency    String   @default("manual") // Cron expression (e.g. "0 * * * *" for hourly) or "manual"
+  syncPaused       Boolean  @default(false)
+  
+  // Auto-delete configuration
+  autoDeleteEnabled     Boolean  @default(false)
+  deleteDelayHours      Int?     // Hours after import before deletion
+  deleteAgeMonths       Int?     // Delete emails older than X months
+  deleteOnlyArchived    Boolean  @default(true)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@map("email_account_settings")
 }
 
 model User {

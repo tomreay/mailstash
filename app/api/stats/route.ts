@@ -1,9 +1,8 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
-import { db } from '@/lib/db'
-import { StatsResponse } from '@/types'
+import { StatsService } from '@/lib/services/stats.service'
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const session = await auth()
     
@@ -11,58 +10,11 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Get user's email account
-    const account = await db.emailAccount.findFirst({
-      where: { 
-        userId: session.user.id,
-        isActive: true 
-      },
-      include: {
-        syncStatus: true,
-        _count: {
-          select: {
-            emails: true,
-          },
-        },
-      },
-    })
+    const { searchParams } = new URL(request.url)
+    const accountId = searchParams.get('accountId') || undefined
 
-    if (!account) {
-      const response: StatsResponse = {
-        totalEmails: 0,
-        unreadEmails: 0,
-        totalAttachments: 0,
-        storageUsed: 0,
-        lastSyncAt: null,
-        syncStatus: 'idle',
-      }
-      return NextResponse.json(response)
-    }
-
-    // Get additional stats
-    const [storageStats, unreadCount, attachmentCount] = await Promise.all([
-      db.email.aggregate({
-        where: { accountId: account.id },
-        _sum: { size: true },
-      }),
-      db.email.count({
-        where: { accountId: account.id, isRead: false },
-      }),
-      db.attachment.count({
-        where: { email: { accountId: account.id } },
-      }),
-    ])
-
-    const response: StatsResponse = {
-      totalEmails: account._count.emails,
-      unreadEmails: unreadCount,
-      totalAttachments: attachmentCount,
-      storageUsed: storageStats._sum.size || 0,
-      lastSyncAt: account.syncStatus?.lastSyncAt?.toISOString() || null,
-      syncStatus: (account.syncStatus?.syncStatus as 'idle' | 'syncing' | 'error') || 'idle',
-    }
-
-    return NextResponse.json(response)
+    const stats = await StatsService.getUserStats(session.user.id, accountId)
+    return NextResponse.json(stats)
   } catch (error) {
     console.error('Error fetching stats:', error)
     return NextResponse.json(

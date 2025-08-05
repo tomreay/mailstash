@@ -104,7 +104,7 @@ CREATE TABLE "sync_jobs" (
     "type" TEXT NOT NULL,
     "status" TEXT NOT NULL,
     "accountId" TEXT NOT NULL,
-    "metadata" JSONB,
+    "emailsProcessed" INTEGER NOT NULL DEFAULT 0,
     "attempts" INTEGER NOT NULL DEFAULT 0,
     "maxAttempts" INTEGER NOT NULL DEFAULT 3,
     "scheduledAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -130,6 +130,26 @@ CREATE TABLE "filter_rules" (
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "filter_rules_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "account_settings" (
+    "id" TEXT NOT NULL,
+    "accountId" TEXT NOT NULL,
+    "syncFrequency" TEXT NOT NULL DEFAULT 'manual',
+    "syncPaused" BOOLEAN NOT NULL DEFAULT false,
+    "includeLabels" TEXT[],
+    "excludeLabels" TEXT[],
+    "labelFilterMode" TEXT NOT NULL DEFAULT 'all',
+    "autoDeleteEnabled" BOOLEAN NOT NULL DEFAULT false,
+    "deleteDelayHours" INTEGER,
+    "deleteAgeMonths" INTEGER,
+    "deleteOnlyArchived" BOOLEAN NOT NULL DEFAULT true,
+    "lastDeleteRunAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "account_settings_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -230,6 +250,9 @@ CREATE UNIQUE INDEX "sync_status_accountId_key" ON "sync_status"("accountId");
 CREATE INDEX "sync_jobs_status_scheduledAt_idx" ON "sync_jobs"("status", "scheduledAt");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "account_settings_accountId_key" ON "account_settings"("accountId");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
 
 -- CreateIndex
@@ -261,6 +284,9 @@ ALTER TABLE "sync_status" ADD CONSTRAINT "sync_status_accountId_fkey" FOREIGN KE
 
 -- AddForeignKey
 ALTER TABLE "filter_rules" ADD CONSTRAINT "filter_rules_accountId_fkey" FOREIGN KEY ("accountId") REFERENCES "email_accounts"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "account_settings" ADD CONSTRAINT "account_settings_accountId_fkey" FOREIGN KEY ("accountId") REFERENCES "email_accounts"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Account" ADD CONSTRAINT "Account_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;

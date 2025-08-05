@@ -37,29 +37,3 @@ export function formatDate(dateString: string | Date): string {
     minute: '2-digit',
   }).format(date)
 }
-
-/**
- * Format date in short format
- */
-export function formatShortDate(dateString: string | Date): string {
-  const date = typeof dateString === 'string' ? new Date(dateString) : dateString
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
-
-  if (diffDays === 0) {
-    return new Intl.DateTimeFormat('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-    }).format(date)
-  } else if (diffDays < 7) {
-    return new Intl.DateTimeFormat('en-US', {
-      weekday: 'short',
-    }).format(date)
-  } else {
-    return new Intl.DateTimeFormat('en-US', {
-      month: 'short',
-      day: 'numeric',
-    }).format(date)
-  }
-}

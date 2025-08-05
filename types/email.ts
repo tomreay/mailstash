@@ -66,19 +66,3 @@ export interface SyncStatus {
   errorMessage: string | null
   gmailHistoryId: string | null
 }
-
-export interface FilterRule {
-  id: string
-  name: string
-  accountId: string
-  conditions: FilterCondition[]
-  action: 'delete' | 'archive' | 'label' | 'move'
-  actionValue?: string
-  isActive: boolean
-}
-
-export interface FilterCondition {
-  field: 'from' | 'to' | 'subject' | 'body' | 'hasAttachments'
-  operator: 'contains' | 'equals' | 'startsWith' | 'endsWith' | 'regex'
-  value: string
-}

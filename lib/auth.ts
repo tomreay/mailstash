@@ -11,7 +11,7 @@ const SCOPES = [
   "https://www.googleapis.com/auth/gmail.modify"
 ]
 
-export const { handlers, signIn, signOut, auth } = NextAuth({
+export const { handlers, signIn, auth } = NextAuth({
   adapter: PrismaAdapter(db),
   providers: [
     Google({

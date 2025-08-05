@@ -96,26 +96,6 @@ export class ImapClient {
     }
   }
 
-  async deleteMessage(mailbox: string, uid: number): Promise<void> {
-    const lock = await this.client.getMailboxLock(mailbox)
-    
-    try {
-      await this.client.messageFlagsAdd(uid, ['\\Deleted'])
-    } finally {
-      lock.release()
-    }
-  }
-
-  async archiveMessage(mailbox: string, uid: number, archiveFolder = 'Archive'): Promise<void> {
-    const lock = await this.client.getMailboxLock(mailbox)
-    
-    try {
-      await this.client.messageMove(uid, archiveFolder)
-    } finally {
-      lock.release()
-    }
-  }
-
   private parseImapMessage(imapMessage: FetchMessageObject, parsed: ParsedMail): EmailMessage {
     const flags = imapMessage.flags || new Set()
     

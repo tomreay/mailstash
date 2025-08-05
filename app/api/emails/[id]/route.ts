@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
-import { db } from '@/lib/db'
-import { parseEmlContent } from '@/lib/utils/eml-parser'
+import { EmailsService } from '@/lib/services/emails.service'
 
 export async function GET(
   _: Request,
@@ -17,81 +16,17 @@ export async function GET(
     // Await params before accessing its properties
     const { id } = await params
 
-    // Get user's email account
-    const account = await db.emailAccount.findFirst({
-      where: { 
-        userId: session.user.id,
-        isActive: true 
-      },
-    })
-
-    if (!account) {
-      return NextResponse.json({ error: 'Account not found' }, { status: 404 })
-    }
-
-    // Get the email
-    const email = await db.email.findFirst({
-      where: {
-        id,
-        accountId: account.id,
-        isDeleted: false,
-      },
-      include: {
-        attachments: true,
-        folder: true,
-      },
-    })
-
-    if (!email) {
-      return NextResponse.json({ error: 'Email not found' }, { status: 404 })
-    }
-
-    // Mark as read if not already
-    if (!email.isRead) {
-      await db.email.update({
-        where: { id: email.id },
-        data: { isRead: true },
-      })
-    }
-
-    // Parse email content from EML file
-    let textContent: string | undefined
-    let htmlContent: string | undefined
-    
-    if (email.emlPath) {
-      try {
-        const content = await parseEmlContent(email.emlPath)
-        textContent = content.textContent
-        htmlContent = content.htmlContent
-      } catch (error) {
-        console.error('Error parsing EML file:', error)
-      }
-    }
-
-    // Parse labels and format response
-    const formattedEmail = {
-      ...email,
-      textContent,
-      htmlContent,
-      date: email.date.toISOString(),
-      createdAt: email.createdAt.toISOString(),
-      updatedAt: email.updatedAt.toISOString(),
-      labels: email.labels ? JSON.parse(email.labels) : [],
-      attachments: email.attachments.map(att => ({
-        ...att,
-        createdAt: att.createdAt.toISOString(),
-        updatedAt: att.updatedAt.toISOString(),
-      })),
-      folder: email.folder ? {
-        ...email.folder,
-        createdAt: email.folder.createdAt.toISOString(),
-        updatedAt: email.folder.updatedAt.toISOString(),
-      } : null,
-    }
-
-    return NextResponse.json(formattedEmail)
+    const email = await EmailsService.getEmailDetails(id, session.user.id)
+    return NextResponse.json(email)
   } catch (error) {
     console.error('Error fetching email:', error)
+    
+    if (error instanceof Error) {
+      if (error.message === 'No active accounts found' || error.message === 'Email not found') {
+        return NextResponse.json({ error: error.message }, { status: 404 })
+      }
+    }
+    
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
