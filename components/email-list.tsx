@@ -15,6 +15,7 @@ interface EmailListProps {
   currentPage: number
   searchQuery: string
   accountId?: string
+  filter?: string
 }
 
 export function EmailList({
@@ -23,7 +24,8 @@ export function EmailList({
   totalPages,
   currentPage,
   searchQuery,
-  accountId
+  accountId,
+  filter
 }: EmailListProps) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
@@ -33,6 +35,7 @@ export function EmailList({
     params.set('page', '1')
     if (query) params.set('search', query)
     if (accountId) params.set('accountId', accountId)
+    if (filter) params.set('filter', filter)
     
     router.push(`/emails?${params.toString()}`)
   }
@@ -42,6 +45,7 @@ export function EmailList({
     params.set('page', page.toString())
     if (searchQuery) params.set('search', searchQuery)
     if (accountId) params.set('accountId', accountId)
+    if (filter) params.set('filter', filter)
     
     setLoading(true)
     router.push(`/emails?${params.toString()}`)

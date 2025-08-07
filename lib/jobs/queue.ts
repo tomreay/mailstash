@@ -57,6 +57,15 @@ export async function scheduleIncrementalSync(
   });
 }
 
+export async function addJob(
+  taskIdentifier: string,
+  payload: Record<string, unknown>,
+  options?: { runAt?: Date; priority?: number; jobKey?: string; maxAttempts?: number }
+) {
+  const utils = await getWorkerUtils();
+  return await utils.addJob(taskIdentifier, payload, options);
+}
+
 export async function scheduleFolderSync(
   accountId: string,
   folderId: string,

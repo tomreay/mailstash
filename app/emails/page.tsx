@@ -13,6 +13,7 @@ interface EmailsPageProps {
     page?: string
     search?: string
     accountId?: string
+    filter?: string
   }>
 }
 
@@ -27,13 +28,15 @@ export default async function EmailsPage({ searchParams }: EmailsPageProps) {
   const page = Number(params.page) || 1
   const search = params.search || ''
   const accountId = params.accountId || undefined
+  const filter = params.filter || undefined
 
   // Fetch emails server-side
   const emailsData = await EmailsService.getUserEmails(session.user.id!, {
     page,
     limit: 20,
     search,
-    accountId
+    accountId,
+    filter
   })
 
   // Fetch account details if accountId is provided
@@ -63,10 +66,16 @@ export default async function EmailsPage({ searchParams }: EmailsPageProps) {
             </Link>
           </div>
           <h2 className="text-3xl font-bold text-gray-900">
-            {accountName ? `${accountName} Emails` : 'All Emails'}
+            {filter === 'marked-for-deletion' 
+              ? 'Emails Marked for Deletion'
+              : accountName 
+              ? `${accountName} Emails` 
+              : 'All Emails'}
           </h2>
           <p className="mt-2 text-gray-600">
-            {emailsData.total} emails{accountName ? ' in this account' : ' in your archive'}
+            {filter === 'marked-for-deletion'
+              ? `${emailsData.total} emails marked for deletion`
+              : `${emailsData.total} emails${accountName ? ' in this account' : ' in your archive'}`}
           </p>
         </div>
 
@@ -78,6 +87,7 @@ export default async function EmailsPage({ searchParams }: EmailsPageProps) {
           currentPage={page}
           searchQuery={search}
           accountId={accountId}
+          filter={filter}
         />
       </main>
     </div>

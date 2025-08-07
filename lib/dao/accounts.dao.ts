@@ -1,5 +1,5 @@
 import {db} from '@/lib/db'
-import { EmailAccountSettings, EmailAccountSettingsSummary, UpdateEmailAccountSettings } from '@/lib/types/account-settings'
+import { EmailAccountSettings, EmailAccountSettingsSummary, UpdateEmailAccountSettings, AutoDeleteMode } from '@/lib/types/account-settings'
 
 export interface CreateAccountData {
   email: string
@@ -96,7 +96,7 @@ export class AccountsDAO {
             settings: account.settings ? {
               syncFrequency: account.settings.syncFrequency,
               syncPaused: account.settings.syncPaused,
-              autoDeleteEnabled: account.settings.autoDeleteEnabled,
+              autoDeleteMode: account.settings.autoDeleteMode as AutoDeleteMode,
             } : null,
             createdAt: account.createdAt.toISOString(),
           }

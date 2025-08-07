@@ -5,6 +5,7 @@ export interface EmailQueryParams {
   limit: number
   search?: string
   accountId?: string
+  filter?: string
 }
 
 export interface EmailListResult {
@@ -20,6 +21,7 @@ export interface EmailListResult {
     hasAttachments: boolean
     labels: string | null
     emlPath: string | null
+    markedForDeletion: boolean
   }[]
   total: number
 }
@@ -27,6 +29,7 @@ export interface EmailListResult {
 export interface EmailWhereCondition {
   accountId: string | { in: string[] }
   isDeleted: boolean
+  markedForDeletion?: boolean
   OR?: Array<{
     subject?: { contains: string; mode: 'insensitive' }
     from?: { contains: string; mode: 'insensitive' }
@@ -45,13 +48,18 @@ export class EmailsDAO {
     accountIds: string[],
     params: EmailQueryParams
   ): Promise<EmailListResult> {
-    const { page, limit, search, accountId } = params
+    const { page, limit, search, accountId, filter } = params
     const skip = (page - 1) * limit
 
     // Build query conditions
     const where: EmailWhereCondition = {
       accountId: accountId ? accountId : { in: accountIds },
       isDeleted: false,
+    }
+
+    // Apply filter
+    if (filter === 'marked-for-deletion') {
+      where.markedForDeletion = true
     }
 
     if (search) {
@@ -81,6 +89,7 @@ export class EmailsDAO {
           hasAttachments: true,
           labels: true,
           emlPath: true,
+          markedForDeletion: true,
         },
       }),
       db.email.count({ where }),

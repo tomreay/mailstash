@@ -80,6 +80,7 @@ export interface EmailListItem {
   hasAttachments: boolean
   labels: string[]
   snippet: string
+  markedForDeletion: boolean
 }
 
 export interface EmailDetail extends Omit<Email, 'labels'> {

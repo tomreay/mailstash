@@ -375,4 +375,20 @@ export class GmailClient {
       throw error;
     }
   }
+
+  async deleteMessage(messageId: string): Promise<void> {
+    try {
+      // Move message to trash (doesn't permanently delete)
+      await this.gmail.users.messages.trash({
+        userId: 'me',
+        id: messageId,
+      });
+    } catch (error) {
+      if (isGoogleApiError(error) && error.code === 401) {
+        await this.refreshAccessToken();
+        return this.deleteMessage(messageId);
+      }
+      throw error;
+    }
+  }
 }

@@ -8,6 +8,7 @@ export interface GetEmailsRequest {
   limit: number
   search?: string
   accountId?: string
+  filter?: string
 }
 
 /**
@@ -18,7 +19,7 @@ export class EmailsService {
    * Get emails with pagination and search for a user
    */
   static async getUserEmails(userId: string, request: GetEmailsRequest): Promise<EmailsResponse> {
-    const { page, limit, search, accountId } = request
+    const { page, limit, search, accountId, filter } = request
 
     // Get user's email account(s)
     const accounts = await AccountsDAO.findActiveAccounts(userId, accountId)
@@ -41,6 +42,7 @@ export class EmailsService {
       limit,
       search,
       accountId,
+      filter,
     })
 
     // Format emails and generate snippets
@@ -65,6 +67,7 @@ export class EmailsService {
           date: email.date.toISOString(),
           labels: email.labels ? JSON.parse(email.labels) : [],
           snippet,
+          markedForDeletion: email.markedForDeletion,
         }
       })
     )

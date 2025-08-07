@@ -97,6 +97,10 @@ model Email {
   category      String?  // "inbox", "sent", "drafts", "spam", "trash"
   labels        String?  // JSON array of labels
   
+  // Auto-delete tracking
+  markedForDeletion Boolean  @default(false) // For dry-run mode
+  markedForDeletionAt DateTime? // When it was marked
+  
   // Storage
   emlPath       String?  // Path to EML file
   size          Int?     // Size in bytes
@@ -168,7 +172,7 @@ model SyncStatus {
 
 model SyncJob {
   id               String   @id @default(cuid())
-  type             String   // "full_sync", "incremental_sync", "folder_sync"
+  type             String   // "full_sync", "incremental_sync", "folder_sync", "auto_delete_dry_run", "auto_delete"
   status           String   // "pending", "processing", "completed", "failed"
   accountId        String
   emailsProcessed  Int      @default(0)
@@ -178,11 +182,13 @@ model SyncJob {
   startedAt        DateTime?
   completedAt      DateTime?
   error            String?  @db.Text
+  metadata         Json?    // Job-specific data (e.g., markedCount for dry-runs)
   
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
   
   @@index([status, scheduledAt])
+  @@index([accountId, type, createdAt])
   @@map("sync_jobs")
 }
 
@@ -217,10 +223,11 @@ model EmailAccountSettings {
   syncPaused       Boolean  @default(false)
   
   // Auto-delete configuration
-  autoDeleteEnabled     Boolean  @default(false)
+  autoDeleteMode        String   @default("off") // "off", "dry-run", "on"
   deleteDelayHours      Int?     // Hours after import before deletion
   deleteAgeMonths       Int?     // Delete emails older than X months
   deleteOnlyArchived    Boolean  @default(true)
+  currentDryRunJobId    String?  // ID of the current dry-run job
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

@@ -2,11 +2,14 @@ import { run, Task, Runner, Logger } from 'graphile-worker';
 import { fullSyncHandler } from './handlers/full-sync';
 import { incrementalSyncHandler } from './handlers/incremental-sync';
 import { folderSyncHandler } from './handlers/folder-sync';
+import { autoDeleteHandler } from './handlers/auto-delete';
 
 const taskList: Record<string, Task> = {
   'email:full_sync': fullSyncHandler,
   'email:incremental_sync': incrementalSyncHandler,
   'email:folder_sync': folderSyncHandler,
+  'email:auto_delete': autoDeleteHandler,
+  'auto-delete': autoDeleteHandler, // Legacy task name support
 };
 
 let runner: Runner | null = null;

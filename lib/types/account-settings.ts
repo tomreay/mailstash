@@ -2,6 +2,8 @@
  * Centralized types for Email Account Settings
  */
 
+export type AutoDeleteMode = 'off' | 'dry-run' | 'on'
+
 /**
  * Core account settings stored in the database
  */
@@ -10,7 +12,7 @@ export interface EmailAccountSettings {
   accountId: string
   syncFrequency: string
   syncPaused: boolean
-  autoDeleteEnabled: boolean
+  autoDeleteMode: AutoDeleteMode
   deleteDelayHours: number | null
   deleteAgeMonths: number | null
   deleteOnlyArchived: boolean
@@ -24,7 +26,7 @@ export interface EmailAccountSettings {
 export type UpdateEmailAccountSettings = {
   syncFrequency?: string
   syncPaused?: boolean
-  autoDeleteEnabled?: boolean
+  autoDeleteMode?: AutoDeleteMode
   deleteDelayHours?: number | null
   deleteAgeMonths?: number | null
   deleteOnlyArchived?: boolean
@@ -38,7 +40,7 @@ export interface EmailAccountSettingsClient {
   accountId: string
   syncFrequency: string
   syncPaused: boolean
-  autoDeleteEnabled: boolean
+  autoDeleteMode: AutoDeleteMode
   deleteDelayHours: number | null
   deleteAgeMonths: number | null
   deleteOnlyArchived: boolean
@@ -52,7 +54,7 @@ export interface EmailAccountSettingsClient {
 export interface EmailAccountSettingsSummary {
   syncFrequency: string
   syncPaused: boolean
-  autoDeleteEnabled: boolean
+  autoDeleteMode: AutoDeleteMode
 }
 
 /**
@@ -72,7 +74,7 @@ export function toClientSettings(settings: EmailAccountSettings): EmailAccountSe
 export const DEFAULT_ACCOUNT_SETTINGS: Omit<EmailAccountSettings, 'id' | 'accountId' | 'lastDeleteRunAt' | 'createdAt' | 'updatedAt'> = {
   syncFrequency: '0 * * * *', // Hourly by default
   syncPaused: false,
-  autoDeleteEnabled: false,
+  autoDeleteMode: 'off',
   deleteDelayHours: null,
   deleteAgeMonths: null,
   deleteOnlyArchived: true

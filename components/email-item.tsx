@@ -39,6 +39,11 @@ export function EmailItem({ email, onClick }: EmailItemProps) {
                   📎
                 </Badge>
               )}
+              {email.markedForDeletion && (
+                <Badge variant="destructive" className="text-xs">
+                  Marked for deletion
+                </Badge>
+              )}
             </div>
             <p className="text-sm text-gray-600 mb-1">
               {name} &lt;{emailAddress}&gt;

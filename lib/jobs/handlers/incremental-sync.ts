@@ -89,6 +89,24 @@ export const incrementalSyncHandler: Task = async (
       { runAt: new Date(Date.now() + nextSyncDelay) }
     );
     
+    // Schedule auto-delete processing if enabled
+    const accountSettings = await db.emailAccountSettings.findUnique({
+      where: { accountId },
+      select: { autoDeleteMode: true }
+    });
+    
+    if (accountSettings && accountSettings.autoDeleteMode !== 'off') {
+      await helpers.addJob(
+        'email:auto_delete',
+        { accountId },
+        { 
+          runAt: new Date(Date.now() + 60000), // Run 1 minute after sync
+          priority: -1, // Lower priority than sync jobs
+        }
+      );
+      console.log(`[incremental-sync] Scheduled auto-delete for account ${accountId}`);
+    }
+    
   } catch (error) {
     console.error(`[incremental-sync] Incremental sync failed for account ${accountId}`, error);
     
