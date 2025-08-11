@@ -1,11 +1,10 @@
-import { auth } from '@/lib/auth'
-import { redirect } from 'next/navigation'
+import {auth} from '@/lib/auth'
+import {redirect} from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Plus } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { AccountsService } from '@/lib/services/accounts.service'
-import { AccountsGrid } from '@/components/accounts-grid'
-import { Header } from '@/components/header'
+import {ArrowLeft, Plus} from 'lucide-react'
+import {Button} from '@/components/ui/button'
+import {Header} from '@/components/header'
+import {AccountList} from "@/components/accounts/account-list";
 
 export default async function AccountsPage() {
   const session = await auth()
@@ -13,9 +12,6 @@ export default async function AccountsPage() {
   if (!session?.user?.email) {
     redirect('/auth/signin')
   }
-
-  // Fetch accounts server-side
-  const accounts = await AccountsService.getUserAccountsWithStats(session.user.id!)
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -44,8 +40,7 @@ export default async function AccountsPage() {
           </p>
         </div>
 
-        {/* Accounts Grid - Client Component */}
-        <AccountsGrid accounts={accounts} />
+        <AccountList />
       </main>
     </div>
   )

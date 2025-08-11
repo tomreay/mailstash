@@ -1,7 +1,7 @@
 import { auth } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { AccountsService } from '@/lib/services/accounts.service'
-import { AccountList } from '@/components/account-list'
+import { AccountList } from '@/components/accounts/account-list'
 import { RecentActivity } from '@/components/recent-activity'
 import { QuickActions } from '@/components/quick-actions-card'
 import { Header } from '@/components/header'
@@ -12,9 +12,6 @@ export default async function Home() {
   if (!session?.user?.email) {
     redirect('/auth/signin')
   }
-
-  // Fetch accounts server-side
-  const accounts = await AccountsService.getUserAccountsWithStats(session.user.id!)
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -29,8 +26,7 @@ export default async function Home() {
           </p>
         </div>
 
-        {/* Account List - Server Component with Client Interactions */}
-        <AccountList accounts={accounts} />
+        <AccountList />
 
         {/* Recent Activity Section */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8">

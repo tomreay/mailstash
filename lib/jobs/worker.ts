@@ -3,12 +3,14 @@ import { fullSyncHandler } from './handlers/full-sync';
 import { incrementalSyncHandler } from './handlers/incremental-sync';
 import { folderSyncHandler } from './handlers/folder-sync';
 import { autoDeleteHandler } from './handlers/auto-delete';
+import { mboxImportHandler } from './handlers/mbox-import';
 
 const taskList: Record<string, Task> = {
   'email:full_sync': fullSyncHandler,
   'email:incremental_sync': incrementalSyncHandler,
   'email:folder_sync': folderSyncHandler,
   'email:auto_delete': autoDeleteHandler,
+  'email:mbox_import': mboxImportHandler,
   'auto-delete': autoDeleteHandler, // Legacy task name support
 };
 

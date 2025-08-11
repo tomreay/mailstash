@@ -11,6 +11,7 @@ interface SettingsTabsProps {
   settings: EmailAccountSettingsClient
   setSettings: (settings: EmailAccountSettingsClient) => void
   account: {
+    provider: string
     lastSyncAt: string | null
   }
   dryRunStatus: DryRunStatus | null
@@ -34,33 +35,37 @@ export function SettingsTabs({
   onRunDryRun,
   onDisableAutoDelete
 }: SettingsTabsProps) {
+  const isArchive = account.provider === 'archive'
+  
   return (
     <>
-      <Tabs defaultValue="sync" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="sync">Sync Settings</TabsTrigger>
+      <Tabs defaultValue={isArchive ? "deletion" : "sync"} className="space-y-4">
+        <TabsList className={`grid w-full ${isArchive ? 'grid-cols-1' : 'grid-cols-2'}`}>
+          {!isArchive && <TabsTrigger value="sync">Sync Settings</TabsTrigger>}
           <TabsTrigger value="deletion">Auto-Delete</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="sync">
-          <Card>
-            <CardHeader>
-              <CardTitle>Sync Configuration</CardTitle>
-              <CardDescription>
-                Control how often your emails are synchronized
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <SyncFrequencySelector
-                frequency={settings.syncFrequency}
-                isPaused={settings.syncPaused}
-                lastSyncAt={account.lastSyncAt}
-                onFrequencyChange={(freq) => setSettings({ ...settings, syncFrequency: freq })}
-                onPausedChange={(paused) => setSettings({ ...settings, syncPaused: paused })}
-              />
-            </CardContent>
-          </Card>
-        </TabsContent>
+        {!isArchive && (
+          <TabsContent value="sync">
+            <Card>
+              <CardHeader>
+                <CardTitle>Sync Configuration</CardTitle>
+                <CardDescription>
+                  Control how often your emails are synchronized
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <SyncFrequencySelector
+                  frequency={settings.syncFrequency}
+                  isPaused={settings.syncPaused}
+                  lastSyncAt={account.lastSyncAt}
+                  onFrequencyChange={(freq) => setSettings({ ...settings, syncFrequency: freq })}
+                  onPausedChange={(paused) => setSettings({ ...settings, syncPaused: paused })}
+                />
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
 
         <TabsContent value="deletion">
           <Card>

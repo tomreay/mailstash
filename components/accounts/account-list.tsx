@@ -1,45 +1,25 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { Plus } from 'lucide-react'
-import { Card, CardContent, CardTitle, CardDescription } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { AccountWithStats } from '@/lib/dao/accounts.dao'
-import { AccountCard } from './account-card'
+import {useRouter} from 'next/navigation'
+import {Plus} from 'lucide-react'
+import {Card, CardContent, CardDescription, CardTitle} from '@/components/ui/card'
+import {Button} from '@/components/ui/button'
+import {AccountCard} from './account-card'
+import {useAccounts} from '@/hooks/useAccounts'
 
-interface AccountListProps {
-  accounts: AccountWithStats[]
-}
-
-export function AccountList({ accounts }: AccountListProps) {
+export function AccountList() {
   const router = useRouter()
-  const [syncing, setSyncing] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const {
+    accounts,
+    syncing,
+    error, 
+    syncAccount,
+    clearError 
+  } = useAccounts()
 
   const handleSyncAccount = async (e: React.MouseEvent, accountId: string) => {
     e.stopPropagation()
-    try {
-      setSyncing(accountId)
-      setError(null)
-      
-      const res = await fetch('/api/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accountId })
-      })
-
-      if (!res.ok) {
-        throw new Error('Failed to start sync')
-      }
-
-      // Refresh the page to get updated data
-      router.refresh()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to start sync')
-    } finally {
-      setSyncing(null)
-    }
+    await syncAccount(accountId)
   }
 
   const handleAccountClick = (accountId: string) => {
@@ -55,14 +35,22 @@ export function AccountList({ accounts }: AccountListProps) {
     <>
       {/* Error State */}
       {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center justify-between">
           <p className="text-red-800">{error}</p>
+          <Button 
+            variant="ghost" 
+            size="sm"
+            onClick={() => clearError()}
+          >
+            Dismiss
+          </Button>
         </div>
       )}
 
       {/* Account Cards Grid */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {/* Add Account Card */}
+        {accounts.length > 0 && (
         <Card 
           className="border-2 border-dashed border-gray-300 hover:border-gray-400 cursor-pointer transition-colors"
           onClick={() => router.push('/accounts/new')}
@@ -77,6 +65,7 @@ export function AccountList({ accounts }: AccountListProps) {
             </CardDescription>
           </CardContent>
         </Card>
+        )}
 
         {/* Account Cards */}
         {accounts.map((account) => (

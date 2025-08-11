@@ -14,7 +14,7 @@ model EmailAccount {
   id          String   @id @default(cuid())
   email       String   @unique
   displayName String?
-  provider    String   // "gmail", "imap", etc.
+  provider    String   // "gmail", "imap", "archive"
   accessToken String?
   refreshToken String?
   expiresAt   DateTime?
@@ -172,7 +172,7 @@ model SyncStatus {
 
 model SyncJob {
   id               String   @id @default(cuid())
-  type             String   // "full_sync", "incremental_sync", "folder_sync", "auto_delete_dry_run", "auto_delete"
+  type             String   // "full_sync", "incremental_sync", "folder_sync", "auto_delete_dry_run", "auto_delete", "mbox_import"
   status           String   // "pending", "processing", "completed", "failed"
   accountId        String
   emailsProcessed  Int      @default(0)

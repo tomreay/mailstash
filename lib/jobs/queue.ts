@@ -1,5 +1,6 @@
 import {makeWorkerUtils, WorkerUtils} from 'graphile-worker';
 import type {FolderSyncPayload, FullSyncPayload, IncrementalSyncPayload} from './types';
+import type {MboxImportPayload} from './handlers/mbox-import';
 
 let workerUtils: WorkerUtils | null = null;
 
@@ -81,14 +82,12 @@ export async function scheduleFolderSync(
     folderPath,
     ...payload,
   };
-  
-  const job = await utils.addJob('email:folder_sync', jobPayload, {
-    ...options,
-    jobKey: `folder_sync:${accountId}:${folderId}`,
-    maxAttempts: 3,
+
+  return await utils.addJob('email:folder_sync', jobPayload, {
+      ...options,
+      jobKey: `folder_sync:${accountId}:${folderId}`,
+      maxAttempts: 3,
   });
-  
-  return job;
 }
 
 export async function getActiveJobs() {
@@ -110,13 +109,11 @@ export async function getActiveJobs() {
     WHERE j.locked_at IS NOT NULL
     ORDER BY j.locked_at DESC
   `;
-  
-  const result = await utils.withPgClient(async (pgClient) => {
-    const { rows } = await pgClient.query(query);
-    return rows;
+
+  return await utils.withPgClient(async (pgClient) => {
+      const {rows} = await pgClient.query(query);
+      return rows;
   });
-  
-  return result;
 }
 
 export async function getPendingJobs(limit = 100) {
@@ -135,7 +132,7 @@ export async function getPendingJobs(limit = 100) {
     LEFT JOIN graphile_worker._private_jobs pj ON j.id = pj.id
     WHERE j.locked_at IS NULL
       AND j.attempts < j.max_attempts
-    ORDER BY j.run_at ASC
+    ORDER BY j.run_at
     LIMIT $1
   `;
 
@@ -186,6 +183,24 @@ export async function retryJob(jobId: string) {
 export async function cancelJob(jobId: string) {
   const utils = await getWorkerUtils();
   await utils.permanentlyFailJobs([jobId], 'Cancelled by user');
+}
+
+export async function scheduleMboxImport(
+  accountId: string,
+  mboxFilePath: string,
+  options?: { runAt?: Date; priority?: number }
+) {
+  const utils = await getWorkerUtils();
+  
+  const jobPayload: MboxImportPayload = {
+    accountId,
+    mboxFilePath,
+  };
+
+  return await utils.addJob('email:mbox_import', jobPayload, {
+    ...options,
+    jobKey: `mbox_import:${accountId}`
+  });
 }
 
 export async function cleanup() {

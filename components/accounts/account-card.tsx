@@ -1,9 +1,11 @@
-import { Mail, Settings, RefreshCw, Loader2, ChevronRight } from 'lucide-react'
+import { Mail, Settings, RefreshCw, Loader2, ChevronRight, Archive, Check } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { formatBytes } from '@/lib/utils'
 import { AccountWithStats } from '@/lib/dao/accounts.dao'
+import {useMemo} from "react";
+import {SyncStatus} from "@/components/accounts/sync-status";
 
 interface AccountCardProps {
   account: AccountWithStats
@@ -20,23 +22,15 @@ export function AccountCard({
   onClick, 
   onSettings 
 }: AccountCardProps) {
-  const getProviderIcon = (provider: string) => {
-    if (provider === 'gmail') {
-      return <Mail className="h-5 w-5 text-red-600" />
-    }
-    return <Mail className="h-5 w-5 text-blue-600" />
-  }
-
-  const getSyncStatusColor = (status: string) => {
-    switch (status) {
-      case 'syncing':
-        return 'text-blue-600 bg-blue-50'
-      case 'error':
-        return 'text-red-600 bg-red-50'
-      default:
-        return 'text-green-600 bg-green-50'
-    }
-  }
+    const providerIcon = useMemo(() => {
+        if (account.provider === 'gmail') {
+          return <Mail className="h-5 w-5 text-red-600" />
+        } else if (account.provider === 'archive') {
+          return <Archive className="h-5 w-5 text-purple-600" />
+        } else {
+            return <Mail className="h-5 w-5 text-blue-600"/>
+        }
+    }, [account.provider])
 
   return (
     <Card 
@@ -54,7 +48,7 @@ export function AccountCard({
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-gray-100 rounded-lg">
-              {getProviderIcon(account.provider)}
+              {providerIcon}
             </div>
             <div>
               <CardTitle className="text-lg font-semibold">
@@ -85,38 +79,31 @@ export function AccountCard({
           </div>
         </div>
 
-        {/* Sync Status */}
-        <div className={`flex items-center justify-between px-3 py-2 rounded-lg ${getSyncStatusColor(account.syncStatus)}`}>
-          <span className="text-sm font-medium">
-            {account.syncStatus === 'syncing' ? 'Syncing...' :
-             account.lastSyncAt ? `Last sync: ${new Date(account.lastSyncAt).toLocaleString()}` :
-             'Never synced'}
-          </span>
-          {account.syncStatus === 'syncing' && (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          )}
-        </div>
+        <SyncStatus syncStatus={account.syncStatus} lastSyncAt={account.lastSyncAt} provider={account.provider} />
 
         {/* Actions */}
         <div className="flex gap-2 pt-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="flex-1"
-            onClick={onSync}
-            disabled={isSyncing || account.syncStatus === 'syncing'}
-          >
-            {isSyncing ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4 mr-2" />
-            )}
-            Sync
-          </Button>
+          {account.provider !== 'archive' && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1"
+              onClick={onSync}
+              disabled={isSyncing || account.syncStatus === 'syncing'}
+            >
+              {isSyncing ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4 mr-2" />
+              )}
+              Sync
+            </Button>
+          )}
           <Button
             variant="outline"
             size="sm"
             onClick={onSettings}
+            className={account.provider === 'archive' ? 'flex-1' : ''}
           >
             <Settings className="h-4 w-4" />
           </Button>
