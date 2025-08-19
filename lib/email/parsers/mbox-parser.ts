@@ -2,7 +2,8 @@ import { createReadStream, promises as fs } from 'fs'
 import { simpleParser, ParsedMail } from 'mailparser'
 import { EmailMessage } from '@/types/email'
 
-// Use require for node-mbox as it's a CommonJS module
+// Use dynamic import for node-mbox as it's a CommonJS module
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const { MboxStream } =  require('node-mbox')
 
 export interface MboxEmailData {

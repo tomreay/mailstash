@@ -4,7 +4,7 @@ import Link from 'next/link'
 import {ArrowLeft, Plus} from 'lucide-react'
 import {Button} from '@/components/ui/button'
 import {Header} from '@/components/header'
-import {AccountList} from "@/components/accounts/account-list";
+import {AccountList} from "@/components/accounts/account-list"
 
 export default async function AccountsPage() {
   const session = await auth()

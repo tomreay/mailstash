@@ -1,6 +1,5 @@
 import { auth } from '@/lib/auth'
 import { redirect } from 'next/navigation'
-import { AccountsService } from '@/lib/services/accounts.service'
 import { AccountList } from '@/components/accounts/account-list'
 import { RecentActivity } from '@/components/recent-activity'
 import { QuickActions } from '@/components/quick-actions-card'

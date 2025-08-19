@@ -1,72 +1,64 @@
-'use client'
-
-import { useEffect, useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import {SyncJob} from "@/types";
+import { db } from '@/lib/db'
+import { auth } from '@/lib/auth'
 
-export function RecentActivity() {
-  const [syncStatus, setSyncStatus] = useState<string>('idle')
-  const [lastSync, setLastSync] = useState<string | null>(null)
-  const [totalEmails, setTotalEmails] = useState<number>(0)
-  const [isLoading, setIsLoading] = useState(true)
-  const [syncJobs, setSyncJobs] = useState<SyncJob[]>([])
+export async function RecentActivity() {
+  const session = await auth()
+  
+  if (!session?.user?.id) {
+    return null
+  }
 
-  const fetchStatus = async () => {
-    try {
-      const [syncRes, statsRes, jobsRes] = await Promise.all([
-        fetch('/api/sync'),
-        fetch('/api/stats'),
-        fetch('/api/sync-jobs?limit=5')
-      ])
-      
-      if (syncRes.ok) {
-        const syncData = await syncRes.json()
-        setSyncStatus(syncData.status || 'idle')
-      }
-      
-      if (statsRes.ok) {
-        const statsData = await statsRes.json()
-        setLastSync(statsData.lastSync)
-        setTotalEmails(statsData.totalEmails)
-      }
-      
-      if (jobsRes.ok) {
-        const jobsData = await jobsRes.json()
-        setSyncJobs(jobsData.syncJobs || [])
-      }
-      
-      setIsLoading(false)
-    } catch (error) {
-      console.error('Error fetching status:', error)
-      setIsLoading(false)
+  // First get user's account IDs
+  const userAccounts = await db.emailAccount.findMany({
+    where: {
+      userId: session.user.id
+    },
+    select: {
+      id: true
     }
-  }
+  })
 
-  useEffect(() => {
-    // Fetch initial status
-    void fetchStatus()
+  const accountIds = userAccounts.map(a => a.id)
 
-    // Poll for updates
-    const interval = setInterval(fetchStatus, 5000)
-    return () => clearInterval(interval)
-  }, [])
+  // Fetch sync jobs
+  const syncJobs = await db.syncJob.findMany({
+    where: {
+      accountId: {
+        in: accountIds
+      }
+    },
+    orderBy: {
+      startedAt: 'desc'
+    },
+    take: 5
+  })
 
-  if (isLoading) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent Activity</CardTitle>
-          <CardDescription>
-            Latest email synchronization events
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="text-sm text-muted-foreground">Loading...</div>
-        </CardContent>
-      </Card>
-    )
-  }
+  // Get stats
+  const accounts = await db.emailAccount.findMany({
+    where: {
+      userId: session.user.id
+    },
+    include: {
+      syncStatus: true
+    }
+  })
+
+  const totalEmails = await db.email.count({
+    where: {
+      account: {
+        userId: session.user.id
+      }
+    }
+  })
+
+  const lastSync = accounts
+    .map(a => a.syncStatus?.lastSyncAt)
+    .filter(Boolean)
+    .sort((a, b) => b!.getTime() - a!.getTime())[0]
+
+  const anySyncing = accounts.some(a => a.syncStatus?.syncStatus === 'syncing')
 
   return (
     <Card>
@@ -103,27 +95,19 @@ export function RecentActivity() {
                       </span>
                     </div>
                     <span className="text-xs text-muted-foreground">
-                      {new Date(job.startedAt!).toLocaleTimeString()}
+                      {job.startedAt ? new Date(job.startedAt).toLocaleTimeString() : ''}
                     </span>
                   </div>
                 )
               })}
             </div>
           )}
-          {syncStatus === 'syncing' && (
+          {anySyncing && (
             <div className="flex items-center">
               <Badge variant="secondary" className="mr-2">
                 SYNC
               </Badge>
               <span className="text-sm">Email synchronization in progress...</span>
-            </div>
-          )}
-          {syncStatus === 'error' && (
-            <div className="flex items-center">
-              <Badge variant="destructive" className="mr-2">
-                ERROR
-              </Badge>
-              <span className="text-sm">Sync failed. Please try again.</span>
             </div>
           )}
           {lastSync && (
@@ -141,10 +125,10 @@ export function RecentActivity() {
               <Badge variant="secondary" className="mr-2">
                 INFO
               </Badge>
-              <span className="text-sm">{totalEmails} emails archived</span>
+              <span className="text-sm">{totalEmails.toLocaleString()} emails archived</span>
             </div>
           )}
-          {!lastSync && syncStatus === 'idle' && (
+          {!lastSync && !anySyncing && syncJobs.length === 0 && (
             <div className="flex items-center">
               <Badge variant="outline" className="mr-2">
                 INFO
