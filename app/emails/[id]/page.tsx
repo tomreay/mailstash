@@ -1,12 +1,8 @@
-'use client';
-
-import { useState, useEffect, useCallback } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import {
   Mail,
   ArrowLeft,
-  Loader2,
   Calendar,
   User,
   Paperclip,
@@ -20,89 +16,33 @@ import {
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { EmailDetail } from '@/types';
 import {
   extractNameFromEmail,
   formatFileSize,
   formatDate,
 } from '@/lib/utils/email';
+import { redirect } from 'next/navigation';
+import { auth } from '@/lib/auth';
+import { EmailsService } from '@/lib/services/emails.service';
 
-export default function EmailDetailPage() {
-  const params = useParams();
-  const router = useRouter();
-  const [email, setEmail] = useState<EmailDetail | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+export default async function EmailDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const session = await auth();
 
-  const fetchEmail = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      const res = await fetch(`/api/emails/${params.id}`);
-
-      if (!res.ok) {
-        if (res.status === 401) {
-          router.push('/auth/signin');
-          return;
-        }
-        if (res.status === 404) {
-          throw new Error('Email not found');
-        }
-        throw new Error('Failed to fetch email');
-      }
-
-      const data = await res.json();
-      setEmail(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load email');
-    } finally {
-      setLoading(false);
-    }
-  }, [params.id, router]);
-
-  useEffect(() => {
-    void fetchEmail();
-  }, [fetchEmail]);
-
-  if (loading) {
-    return (
-      <div className='min-h-screen bg-gray-50 flex items-center justify-center'>
-        <Loader2 className='h-8 w-8 animate-spin text-gray-400' />
-      </div>
-    );
+  if (!session?.user?.id) {
+    redirect('/auth/signin');
   }
 
-  if (error || !email) {
-    return (
-      <div className='min-h-screen bg-gray-50'>
-        <header className='bg-white border-b border-gray-200'>
-          <div className='max-w-7xl mx-auto px-4 sm:px-6 lg:px-8'>
-            <div className='flex justify-between items-center py-4'>
-              <div className='flex items-center'>
-                <Link href='/' className='flex items-center'>
-                  <Mail className='h-8 w-8 text-blue-600 mr-3' />
-                  <h1 className='text-2xl font-bold text-gray-900'>
-                    MailStash
-                  </h1>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
-        <main className='max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8'>
-          <div className='text-center py-12'>
-            <p className='text-red-600 mb-4'>{error || 'Email not found'}</p>
-            <Link href='/emails'>
-              <Button variant='outline'>
-                <ArrowLeft className='h-4 w-4 mr-2' />
-                Back to Emails
-              </Button>
-            </Link>
-          </div>
-        </main>
-      </div>
-    );
+  const { id } = await params;
+
+  let email;
+  try {
+    email = await EmailsService.getEmailDetails(id, session.user.id);
+  } catch {
+    notFound();
   }
 
   const { name: senderName, email: senderEmail } = extractNameFromEmail(
@@ -270,17 +210,6 @@ export default function EmailDetailPage() {
           </CardContent>
         </Card>
       </main>
-
-      <style jsx global>{`
-        .email-content img {
-          max-width: 100%;
-          height: auto;
-        }
-        .email-content a {
-          color: #2563eb;
-          text-decoration: underline;
-        }
-      `}</style>
     </div>
   );
 }

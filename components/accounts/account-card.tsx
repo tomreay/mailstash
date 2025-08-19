@@ -3,7 +3,7 @@ import { Mail, Settings, Archive, ChevronRight } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { cn, formatBytes } from '@/lib/utils';
+import { formatBytes } from '@/lib/utils';
 import { AccountWithStats } from '@/lib/dao/accounts.dao';
 import { SyncButton } from './sync-button';
 import { SyncStatus } from './sync-status';

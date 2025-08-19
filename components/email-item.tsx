@@ -5,18 +5,14 @@ import { extractNameFromEmail } from '@/lib/utils/email';
 
 interface EmailItemProps {
   email: EmailListItem;
-  onClick: () => void;
 }
 
-export function EmailItem({ email, onClick }: EmailItemProps) {
+export function EmailItem({ email }: EmailItemProps) {
   const { name, email: emailAddress } = extractNameFromEmail(email.from);
   const date = new Date(email.date);
 
   return (
-    <Card
-      className='hover:shadow-md transition-shadow cursor-pointer'
-      onClick={onClick}
-    >
+    <Card className='hover:shadow-md transition-shadow cursor-pointer'>
       <CardContent className='p-4'>
         <div className='flex items-start justify-between'>
           <div className='flex-1 min-w-0'>

@@ -77,3 +77,14 @@ body {
   background-color: hsl(var(--background));
   color: hsl(var(--foreground));
 }
+
+/* Email content styles */
+.email-content img {
+  max-width: 100%;
+  height: auto;
+}
+
+.email-content a {
+  color: #2563eb;
+  text-decoration: underline;
+}

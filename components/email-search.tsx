@@ -1,20 +1,34 @@
 'use client';
 
 import { useState, FormEvent } from 'react';
+import { useRouter } from 'next/navigation';
 import { Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 
 interface EmailSearchProps {
   initialQuery: string;
-  onSearch: (query: string) => void;
+  accountId?: string;
+  filter?: string;
 }
 
-export function EmailSearch({ initialQuery, onSearch }: EmailSearchProps) {
+export function EmailSearch({
+  initialQuery,
+  accountId,
+  filter,
+}: EmailSearchProps) {
+  const router = useRouter();
   const [query, setQuery] = useState(initialQuery);
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
-    onSearch(query);
+
+    const params = new URLSearchParams();
+    params.set('page', '1');
+    if (query) params.set('search', query);
+    if (accountId) params.set('accountId', accountId);
+    if (filter) params.set('filter', filter);
+
+    router.push(`/emails?${params.toString()}`);
   };
 
   return (

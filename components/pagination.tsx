@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 
 interface PaginationProps {
@@ -5,7 +6,9 @@ interface PaginationProps {
   totalPages: number;
   total: number;
   itemsPerPage: number;
-  onPageChange: (page: number) => void;
+  searchQuery?: string;
+  accountId?: string;
+  filter?: string;
 }
 
 export function Pagination({
@@ -13,10 +16,21 @@ export function Pagination({
   totalPages,
   total,
   itemsPerPage,
-  onPageChange,
+  searchQuery,
+  accountId,
+  filter,
 }: PaginationProps) {
   const startItem = (currentPage - 1) * itemsPerPage + 1;
   const endItem = Math.min(currentPage * itemsPerPage, total);
+
+  const buildPageUrl = (page: number) => {
+    const params = new URLSearchParams();
+    params.set('page', page.toString());
+    if (searchQuery) params.set('search', searchQuery);
+    if (accountId) params.set('accountId', accountId);
+    if (filter) params.set('filter', filter);
+    return `/emails?${params.toString()}`;
+  };
 
   return (
     <div className='mt-6 flex items-center justify-between'>
@@ -24,20 +38,24 @@ export function Pagination({
         Showing {startItem}-{endItem} of {total} emails
       </p>
       <div className='flex gap-2'>
-        <Button
-          variant='outline'
-          disabled={currentPage === 1}
-          onClick={() => onPageChange(currentPage - 1)}
-        >
-          Previous
-        </Button>
-        <Button
-          variant='outline'
-          disabled={currentPage >= totalPages}
-          onClick={() => onPageChange(currentPage + 1)}
-        >
-          Next
-        </Button>
+        {currentPage > 1 ? (
+          <Link href={buildPageUrl(currentPage - 1)}>
+            <Button variant='outline'>Previous</Button>
+          </Link>
+        ) : (
+          <Button variant='outline' disabled>
+            Previous
+          </Button>
+        )}
+        {currentPage < totalPages ? (
+          <Link href={buildPageUrl(currentPage + 1)}>
+            <Button variant='outline'>Next</Button>
+          </Link>
+        ) : (
+          <Button variant='outline' disabled>
+            Next
+          </Button>
+        )}
       </div>
     </div>
   );
