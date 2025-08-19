@@ -1,49 +1,54 @@
-import {db} from '@/lib/db'
-import { EmailAccountSettings, EmailAccountSettingsSummary, UpdateEmailAccountSettings, AutoDeleteMode } from '@/lib/types/account-settings'
+import { db } from '@/lib/db';
+import {
+  EmailAccountSettings,
+  EmailAccountSettingsSummary,
+  UpdateEmailAccountSettings,
+  AutoDeleteMode,
+} from '@/lib/types/account-settings';
 
 export interface CreateAccountData {
-  email: string
-  displayName: string | null
-  provider: string
-  userId: string
-  isActive: boolean
-  imapHost?: string
-  imapPort?: number
-  imapSecure?: boolean
-  imapUser?: string
-  imapPass?: string
+  email: string;
+  displayName: string | null;
+  provider: string;
+  userId: string;
+  isActive: boolean;
+  imapHost?: string;
+  imapPort?: number;
+  imapSecure?: boolean;
+  imapUser?: string;
+  imapPass?: string;
 }
 
 export interface AccountWithStats {
-  id: string
-  email: string
-  displayName: string | null
-  provider: string
-  isActive: boolean
-  emailCount: number
-  folderCount: number
-  storageUsed: number
-  lastSyncAt: string | null
-  syncStatus: string
-  settings: EmailAccountSettingsSummary | null
-  createdAt: string
+  id: string;
+  email: string;
+  displayName: string | null;
+  provider: string;
+  isActive: boolean;
+  emailCount: number;
+  folderCount: number;
+  storageUsed: number;
+  lastSyncAt: string | null;
+  syncStatus: string;
+  settings: EmailAccountSettingsSummary | null;
+  createdAt: string;
 }
 
 export interface AccountDetails {
-  id: string
-  email: string
-  displayName: string | null
-  provider: string
-  isActive: boolean
-  emailCount: number
-  folderCount: number
-  filterRuleCount: number
-  storageUsed: number
-  lastSyncAt: string | null
-  syncStatus: string
-  settings: EmailAccountSettings | null
-  createdAt: string
-  updatedAt: string
+  id: string;
+  email: string;
+  displayName: string | null;
+  provider: string;
+  isActive: boolean;
+  emailCount: number;
+  folderCount: number;
+  filterRuleCount: number;
+  storageUsed: number;
+  lastSyncAt: string | null;
+  syncStatus: string;
+  settings: EmailAccountSettings | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 /**
@@ -53,11 +58,13 @@ export class AccountsDAO {
   /**
    * Find all accounts for a user with basic stats
    */
-  static async findAccountsWithStats(userId: string): Promise<AccountWithStats[]> {
+  static async findAccountsWithStats(
+    userId: string
+  ): Promise<AccountWithStats[]> {
     // Get all user accounts with basic info and stats
     const accounts = await db.emailAccount.findMany({
-      where: { 
-        userId 
+      where: {
+        userId,
       },
       include: {
         syncStatus: true,
@@ -70,38 +77,41 @@ export class AccountsDAO {
         },
       },
       orderBy: {
-        createdAt: 'asc'
-      }
-    })
+        createdAt: 'asc',
+      },
+    });
 
     // Calculate storage used per account
     return await Promise.all(
-        accounts.map(async (account) => {
-          const storageStats = await db.email.aggregate({
-            where: {accountId: account.id},
-            _sum: {size: true},
-          })
+      accounts.map(async account => {
+        const storageStats = await db.email.aggregate({
+          where: { accountId: account.id },
+          _sum: { size: true },
+        });
 
-          return {
-            id: account.id,
-            email: account.email,
-            displayName: account.displayName,
-            provider: account.provider,
-            isActive: account.isActive,
-            emailCount: account._count.emails,
-            folderCount: account._count.folders,
-            storageUsed: storageStats._sum.size || 0,
-            lastSyncAt: account.syncStatus?.lastSyncAt?.toISOString() || null,
-            syncStatus: account.syncStatus?.syncStatus || 'idle',
-            settings: account.settings ? {
-              syncFrequency: account.settings.syncFrequency,
-              syncPaused: account.settings.syncPaused,
-              autoDeleteMode: account.settings.autoDeleteMode as AutoDeleteMode,
-            } : null,
-            createdAt: account.createdAt.toISOString(),
-          }
-        })
-    )
+        return {
+          id: account.id,
+          email: account.email,
+          displayName: account.displayName,
+          provider: account.provider,
+          isActive: account.isActive,
+          emailCount: account._count.emails,
+          folderCount: account._count.folders,
+          storageUsed: storageStats._sum.size || 0,
+          lastSyncAt: account.syncStatus?.lastSyncAt?.toISOString() || null,
+          syncStatus: account.syncStatus?.syncStatus || 'idle',
+          settings: account.settings
+            ? {
+                syncFrequency: account.settings.syncFrequency,
+                syncPaused: account.settings.syncPaused,
+                autoDeleteMode: account.settings
+                  .autoDeleteMode as AutoDeleteMode,
+              }
+            : null,
+          createdAt: account.createdAt.toISOString(),
+        };
+      })
+    );
   }
 
   /**
@@ -109,8 +119,8 @@ export class AccountsDAO {
    */
   static async findByEmail(email: string) {
     return await db.emailAccount.findUnique({
-      where: { email }
-    })
+      where: { email },
+    });
   }
 
   /**
@@ -122,8 +132,8 @@ export class AccountsDAO {
       include: {
         syncStatus: true,
         settings: true,
-      }
-    })
+      },
+    });
   }
 
   /**
@@ -133,8 +143,8 @@ export class AccountsDAO {
     return await db.emailAccountSettings.create({
       data: {
         accountId,
-      }
-    })
+      },
+    });
   }
 
   /**
@@ -145,18 +155,21 @@ export class AccountsDAO {
       data: {
         accountId,
         syncStatus: 'idle',
-      }
-    })
+      },
+    });
   }
 
   /**
    * Find account by ID and user ID with detailed stats
    */
-  static async findAccountDetails(accountId: string, userId: string): Promise<AccountDetails | null> {
+  static async findAccountDetails(
+    accountId: string,
+    userId: string
+  ): Promise<AccountDetails | null> {
     const account = await db.emailAccount.findFirst({
-      where: { 
+      where: {
         id: accountId,
-        userId 
+        userId,
       },
       include: {
         syncStatus: true,
@@ -169,17 +182,17 @@ export class AccountsDAO {
           },
         },
       },
-    })
+    });
 
     if (!account) {
-      return null
+      return null;
     }
 
     // Get storage stats
     const storageStats = await db.email.aggregate({
       where: { accountId: account.id },
       _sum: { size: true },
-    })
+    });
 
     return {
       id: account.id,
@@ -196,7 +209,7 @@ export class AccountsDAO {
       settings: account.settings as EmailAccountSettings | null,
       createdAt: account.createdAt.toISOString(),
       updatedAt: account.updatedAt.toISOString(),
-    }
+    };
   }
 
   /**
@@ -204,11 +217,11 @@ export class AccountsDAO {
    */
   static async findByIdAndUserId(accountId: string, userId: string) {
     return await db.emailAccount.findFirst({
-      where: { 
+      where: {
         id: accountId,
-        userId 
+        userId,
       },
-    })
+    });
   }
 
   /**
@@ -216,8 +229,8 @@ export class AccountsDAO {
    */
   static async deleteAccount(accountId: string) {
     return await db.emailAccount.delete({
-      where: { id: accountId }
-    })
+      where: { id: accountId },
+    });
   }
 
   /**
@@ -228,10 +241,10 @@ export class AccountsDAO {
       where: {
         userId,
         isActive: true,
-        ...(accountId ? { id: accountId } : {})
+        ...(accountId ? { id: accountId } : {}),
       },
-      select: { id: true }
-    })
+      select: { id: true },
+    });
   }
 
   /**
@@ -242,7 +255,7 @@ export class AccountsDAO {
       where: {
         userId,
         isActive: true,
-        ...(accountId ? { id: accountId } : {})
+        ...(accountId ? { id: accountId } : {}),
       },
       include: {
         syncStatus: true,
@@ -252,24 +265,27 @@ export class AccountsDAO {
           },
         },
       },
-    })
+    });
   }
 
   /**
    * Update or create account settings
    */
-  static async upsertAccountSettings(accountId: string, settingsData: UpdateEmailAccountSettings): Promise<EmailAccountSettings> {
+  static async upsertAccountSettings(
+    accountId: string,
+    settingsData: UpdateEmailAccountSettings
+  ): Promise<EmailAccountSettings> {
     const result = await db.emailAccountSettings.upsert({
       where: {
-        accountId
+        accountId,
       },
       update: settingsData,
       create: {
         accountId,
-        ...settingsData
-      }
-    })
-    
-    return result as EmailAccountSettings
+        ...settingsData,
+      },
+    });
+
+    return result as EmailAccountSettings;
   }
 }

@@ -14,15 +14,17 @@ const tsx = spawn('npx', ['tsx', join(__dirname, '../lib/jobs/worker.ts')], {
   stdio: 'inherit',
   env: {
     ...process.env,
-    DATABASE_URL: process.env.DATABASE_URL || 'postgresql://mailstash:mailstash_password@localhost:5432/mailstash'
-  }
+    DATABASE_URL:
+      process.env.DATABASE_URL ||
+      'postgresql://mailstash:mailstash_password@localhost:5432/mailstash',
+  },
 });
 
-tsx.on('error', (err) => {
+tsx.on('error', err => {
   console.error('Failed to start worker:', err);
   process.exit(1);
 });
 
-tsx.on('exit', (code) => {
+tsx.on('exit', code => {
   process.exit(code || 0);
 });

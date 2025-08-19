@@ -1,26 +1,32 @@
-import { Save, Loader2 } from 'lucide-react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { SyncFrequencySelector } from '@/components/sync-frequency-selector'
-import { AutoDeleteSettings } from '@/components/auto-delete-settings'
-import { EmailAccountSettingsClient } from '@/lib/types/account-settings'
-import { DryRunStatus } from '@/components/auto-delete-settings'
+import { Save, Loader2 } from 'lucide-react';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { SyncFrequencySelector } from '@/components/sync-frequency-selector';
+import { AutoDeleteSettings } from '@/components/auto-delete-settings';
+import { EmailAccountSettingsClient } from '@/lib/types/account-settings';
+import { DryRunStatus } from '@/components/auto-delete-settings';
 
 interface SettingsTabsProps {
-  settings: EmailAccountSettingsClient
-  setSettings: (settings: EmailAccountSettingsClient) => void
+  settings: EmailAccountSettingsClient;
+  setSettings: (settings: EmailAccountSettingsClient) => void;
   account: {
-    provider: string
-    lastSyncAt: string | null
-  }
-  dryRunStatus: DryRunStatus | null
-  isDryRunLoading: boolean
-  saving: boolean
-  accountId: string
-  onSaveSettings: () => void
-  onRunDryRun: () => void
-  onDisableAutoDelete: () => void
+    provider: string;
+    lastSyncAt: string | null;
+  };
+  dryRunStatus: DryRunStatus | null;
+  isDryRunLoading: boolean;
+  saving: boolean;
+  accountId: string;
+  onSaveSettings: () => void;
+  onRunDryRun: () => void;
+  onDisableAutoDelete: () => void;
 }
 
 export function SettingsTabs({
@@ -33,20 +39,25 @@ export function SettingsTabs({
   accountId,
   onSaveSettings,
   onRunDryRun,
-  onDisableAutoDelete
+  onDisableAutoDelete,
 }: SettingsTabsProps) {
-  const isArchive = account.provider === 'archive'
-  
+  const isArchive = account.provider === 'archive';
+
   return (
     <>
-      <Tabs defaultValue={isArchive ? "deletion" : "sync"} className="space-y-4">
-        <TabsList className={`grid w-full ${isArchive ? 'grid-cols-1' : 'grid-cols-2'}`}>
-          {!isArchive && <TabsTrigger value="sync">Sync Settings</TabsTrigger>}
-          <TabsTrigger value="deletion">Auto-Delete</TabsTrigger>
+      <Tabs
+        defaultValue={isArchive ? 'deletion' : 'sync'}
+        className='space-y-4'
+      >
+        <TabsList
+          className={`grid w-full ${isArchive ? 'grid-cols-1' : 'grid-cols-2'}`}
+        >
+          {!isArchive && <TabsTrigger value='sync'>Sync Settings</TabsTrigger>}
+          <TabsTrigger value='deletion'>Auto-Delete</TabsTrigger>
         </TabsList>
 
         {!isArchive && (
-          <TabsContent value="sync">
+          <TabsContent value='sync'>
             <Card>
               <CardHeader>
                 <CardTitle>Sync Configuration</CardTitle>
@@ -59,15 +70,19 @@ export function SettingsTabs({
                   frequency={settings.syncFrequency}
                   isPaused={settings.syncPaused}
                   lastSyncAt={account.lastSyncAt}
-                  onFrequencyChange={(freq) => setSettings({ ...settings, syncFrequency: freq })}
-                  onPausedChange={(paused) => setSettings({ ...settings, syncPaused: paused })}
+                  onFrequencyChange={freq =>
+                    setSettings({ ...settings, syncFrequency: freq })
+                  }
+                  onPausedChange={paused =>
+                    setSettings({ ...settings, syncPaused: paused })
+                  }
                 />
               </CardContent>
             </Card>
           </TabsContent>
         )}
 
-        <TabsContent value="deletion">
+        <TabsContent value='deletion'>
           <Card>
             <CardHeader>
               <CardTitle>Auto-Delete Configuration</CardTitle>
@@ -84,10 +99,18 @@ export function SettingsTabs({
                 deleteOnlyArchived={settings.deleteOnlyArchived}
                 dryRunStatus={dryRunStatus}
                 isLoading={isDryRunLoading}
-                onModeChange={(mode) => setSettings({ ...settings, autoDeleteMode: mode })}
-                onDelayChange={(hours) => setSettings({ ...settings, deleteDelayHours: hours })}
-                onAgeChange={(months) => setSettings({ ...settings, deleteAgeMonths: months })}
-                onArchivedOnlyChange={(archived) => setSettings({ ...settings, deleteOnlyArchived: archived })}
+                onModeChange={mode =>
+                  setSettings({ ...settings, autoDeleteMode: mode })
+                }
+                onDelayChange={hours =>
+                  setSettings({ ...settings, deleteDelayHours: hours })
+                }
+                onAgeChange={months =>
+                  setSettings({ ...settings, deleteAgeMonths: months })
+                }
+                onArchivedOnlyChange={archived =>
+                  setSettings({ ...settings, deleteOnlyArchived: archived })
+                }
                 onRunDryRun={onRunDryRun}
                 onDisableAutoDelete={onDisableAutoDelete}
               />
@@ -96,19 +119,16 @@ export function SettingsTabs({
         </TabsContent>
       </Tabs>
 
-      <div className="mt-6 flex justify-end">
-        <Button 
-          onClick={onSaveSettings}
-          disabled={saving}
-        >
+      <div className='mt-6 flex justify-end'>
+        <Button onClick={onSaveSettings} disabled={saving}>
           {saving ? (
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            <Loader2 className='h-4 w-4 mr-2 animate-spin' />
           ) : (
-            <Save className="h-4 w-4 mr-2" />
+            <Save className='h-4 w-4 mr-2' />
           )}
           Save Settings
         </Button>
       </div>
     </>
-  )
+  );
 }

@@ -1,5 +1,5 @@
-import {Folder} from "@/types";
-import {EmailAccount, SyncStatus} from "@/types/email";
+import { Folder } from '@/types';
+import { EmailAccount, SyncStatus } from '@/types/email';
 
 export interface SyncJobPayload {
   accountId: string;

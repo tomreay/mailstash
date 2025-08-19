@@ -5,16 +5,16 @@ import { db } from '@/lib/db';
 export async function GET(request: NextRequest) {
   try {
     const session = await auth();
-    
+
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Get user's email accounts
     const accounts = await db.emailAccount.findMany({
-      where: { 
+      where: {
         userId: session.user.id,
-        isActive: true 
+        isActive: true,
       },
       select: { id: true },
     });
@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
     }
 
     const accountIds = accounts.map(a => a.id);
-    
+
     // Get recent sync jobs
     const searchParams = request.nextUrl.searchParams;
     const limit = parseInt(searchParams.get('limit') || '10', 10);
@@ -32,10 +32,7 @@ export async function GET(request: NextRequest) {
       where: {
         accountId: { in: accountIds },
       },
-      orderBy: [
-        { startedAt: 'desc' },
-        { createdAt: 'desc' },
-      ],
+      orderBy: [{ startedAt: 'desc' }, { createdAt: 'desc' }],
       take: limit,
       select: {
         id: true,
@@ -49,7 +46,7 @@ export async function GET(request: NextRequest) {
         createdAt: true,
       },
     });
-    
+
     return NextResponse.json({ syncJobs });
   } catch (error) {
     console.error('Error fetching sync jobs:', error);

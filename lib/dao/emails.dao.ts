@@ -1,40 +1,40 @@
-import { db } from '@/lib/db'
+import { db } from '@/lib/db';
 
 export interface EmailQueryParams {
-  page: number
-  limit: number
-  search?: string
-  accountId?: string
-  filter?: string
+  page: number;
+  limit: number;
+  search?: string;
+  accountId?: string;
+  filter?: string;
 }
 
 export interface EmailListResult {
   emails: {
-    id: string
-    messageId: string
-    subject: string | null
-    from: string
-    to: string
-    date: Date
-    isRead: boolean
-    isImportant: boolean
-    hasAttachments: boolean
-    labels: string | null
-    emlPath: string | null
-    markedForDeletion: boolean
-  }[]
-  total: number
+    id: string;
+    messageId: string;
+    subject: string | null;
+    from: string;
+    to: string;
+    date: Date;
+    isRead: boolean;
+    isImportant: boolean;
+    hasAttachments: boolean;
+    labels: string | null;
+    emlPath: string | null;
+    markedForDeletion: boolean;
+  }[];
+  total: number;
 }
 
 export interface EmailWhereCondition {
-  accountId: string | { in: string[] }
-  isDeleted: boolean
-  markedForDeletion?: boolean
+  accountId: string | { in: string[] };
+  isDeleted: boolean;
+  markedForDeletion?: boolean;
   OR?: Array<{
-    subject?: { contains: string; mode: 'insensitive' }
-    from?: { contains: string; mode: 'insensitive' }
-    to?: { contains: string; mode: 'insensitive' }
-  }>
+    subject?: { contains: string; mode: 'insensitive' };
+    from?: { contains: string; mode: 'insensitive' };
+    to?: { contains: string; mode: 'insensitive' };
+  }>;
 }
 
 /**
@@ -48,18 +48,18 @@ export class EmailsDAO {
     accountIds: string[],
     params: EmailQueryParams
   ): Promise<EmailListResult> {
-    const { page, limit, search, accountId, filter } = params
-    const skip = (page - 1) * limit
+    const { page, limit, search, accountId, filter } = params;
+    const skip = (page - 1) * limit;
 
     // Build query conditions
     const where: EmailWhereCondition = {
       accountId: accountId ? accountId : { in: accountIds },
       isDeleted: false,
-    }
+    };
 
     // Apply filter
     if (filter === 'marked-for-deletion') {
-      where.markedForDeletion = true
+      where.markedForDeletion = true;
     }
 
     if (search) {
@@ -67,7 +67,7 @@ export class EmailsDAO {
         { subject: { contains: search, mode: 'insensitive' as const } },
         { from: { contains: search, mode: 'insensitive' as const } },
         { to: { contains: search, mode: 'insensitive' as const } },
-      ]
+      ];
     }
 
     // Get emails with pagination
@@ -93,9 +93,9 @@ export class EmailsDAO {
         },
       }),
       db.email.count({ where }),
-    ])
+    ]);
 
-    return { emails, total }
+    return { emails, total };
   }
 
   /**
@@ -112,7 +112,7 @@ export class EmailsDAO {
         attachments: true,
         folder: true,
       },
-    })
+    });
   }
 
   /**
@@ -122,7 +122,6 @@ export class EmailsDAO {
     return await db.email.update({
       where: { id: emailId },
       data: { isRead: true },
-    })
+    });
   }
-
 }

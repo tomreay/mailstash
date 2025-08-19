@@ -1,24 +1,29 @@
-import {Task} from 'graphile-worker';
-import {EmailAccountWithSyncStatus, IncrementalSyncPayload, JobResult} from '../types';
-import {ImapClient} from '@/lib/email/imap-client';
-import {GmailClient} from '@/lib/email/gmail-client';
-import {EmailStorage} from '@/lib/storage/email-storage';
-import {db} from '@/lib/db';
-import {SyncJob} from "@/types";
+import { Task } from 'graphile-worker';
+import {
+  EmailAccountWithSyncStatus,
+  IncrementalSyncPayload,
+  JobResult,
+} from '../types';
+import { ImapClient } from '@/lib/email/imap-client';
+import { GmailClient } from '@/lib/email/gmail-client';
+import { EmailStorage } from '@/lib/storage/email-storage';
+import { db } from '@/lib/db';
+import { SyncJob } from '@/types';
 
-export const incrementalSyncHandler: Task = async (
-  payload,
-  helpers
-) => {
+export const incrementalSyncHandler: Task = async (payload, helpers) => {
   let syncJob: SyncJob | null = null;
-  const { accountId, lastSyncAt, gmailHistoryId, imapUidValidity } = payload as IncrementalSyncPayload;
-  
-  console.log(`[incremental-sync] Starting incremental sync for account ${accountId}`, {
-    lastSyncAt,
-    gmailHistoryId,
-    imapUidValidity,
-  });
-  
+  const { accountId, lastSyncAt, gmailHistoryId, imapUidValidity } =
+    payload as IncrementalSyncPayload;
+
+  console.log(
+    `[incremental-sync] Starting incremental sync for account ${accountId}`,
+    {
+      lastSyncAt,
+      gmailHistoryId,
+      imapUidValidity,
+    }
+  );
+
   try {
     // Create sync job record
     syncJob = await db.syncJob.create({
@@ -29,23 +34,26 @@ export const incrementalSyncHandler: Task = async (
         startedAt: new Date(),
       },
     });
-    const account: EmailAccountWithSyncStatus | null = await db.emailAccount.findUnique({
-      where: { id: accountId },
-      include: { syncStatus: true },
-    });
-    
+    const account: EmailAccountWithSyncStatus | null =
+      await db.emailAccount.findUnique({
+        where: { id: accountId },
+        include: { syncStatus: true },
+      });
+
     if (!account) {
       throw new Error(`Account ${accountId} not found`);
     }
-    
+
     if (!account.isActive) {
-      console.log(`[incremental-sync] Account ${accountId} is not active, skipping sync`);
+      console.log(
+        `[incremental-sync] Account ${accountId} is not active, skipping sync`
+      );
       return;
     }
-    
+
     const storage = new EmailStorage();
     let result: JobResult = { success: true, emailsProcessed: 0 };
-    
+
     if (account.provider === 'gmail') {
       result = await syncGmailIncremental(account);
     } else if (account.provider === 'imap') {
@@ -53,7 +61,7 @@ export const incrementalSyncHandler: Task = async (
     } else {
       throw new Error(`Unsupported provider: ${account.provider}`);
     }
-    
+
     // Update sync status
     await db.syncStatus.update({
       where: { accountId },
@@ -61,10 +69,12 @@ export const incrementalSyncHandler: Task = async (
         syncStatus: 'idle',
         lastSyncAt: new Date(),
         errorMessage: null,
-        gmailHistoryId: result.nextSyncData?.gmailHistoryId || account.syncStatus?.gmailHistoryId,
+        gmailHistoryId:
+          result.nextSyncData?.gmailHistoryId ||
+          account.syncStatus?.gmailHistoryId,
       },
     });
-    
+
     // Update job status to completed
     await db.syncJob.update({
       where: { id: syncJob.id },
@@ -74,42 +84,49 @@ export const incrementalSyncHandler: Task = async (
         emailsProcessed: result.emailsProcessed || 0,
       },
     });
-    
-    console.log(`[incremental-sync] Incremental sync completed for account ${accountId}`, result);
-    
+
+    console.log(
+      `[incremental-sync] Incremental sync completed for account ${accountId}`,
+      result
+    );
+
     // Schedule next incremental sync based on activity
     const nextSyncDelay = getNextSyncDelay(result.emailsProcessed || 0);
     await helpers.addJob(
       'email:incremental_sync',
-      { 
+      {
         accountId,
         gmailHistoryId: result.nextSyncData?.gmailHistoryId,
         lastSyncAt: new Date().toISOString(),
       },
       { runAt: new Date(Date.now() + nextSyncDelay) }
     );
-    
+
     // Schedule auto-delete processing if enabled
     const accountSettings = await db.emailAccountSettings.findUnique({
       where: { accountId },
-      select: { autoDeleteMode: true }
+      select: { autoDeleteMode: true },
     });
-    
+
     if (accountSettings && accountSettings.autoDeleteMode !== 'off') {
       await helpers.addJob(
         'email:auto_delete',
         { accountId },
-        { 
+        {
           runAt: new Date(Date.now() + 60000), // Run 1 minute after sync
           priority: -1, // Lower priority than sync jobs
         }
       );
-      console.log(`[incremental-sync] Scheduled auto-delete for account ${accountId}`);
+      console.log(
+        `[incremental-sync] Scheduled auto-delete for account ${accountId}`
+      );
     }
-    
   } catch (error) {
-    console.error(`[incremental-sync] Incremental sync failed for account ${accountId}`, error);
-    
+    console.error(
+      `[incremental-sync] Incremental sync failed for account ${accountId}`,
+      error
+    );
+
     // Update job status to failed
     if (syncJob) {
       await db.syncJob.update({
@@ -121,30 +138,36 @@ export const incrementalSyncHandler: Task = async (
         },
       });
     }
-    
+
     // Check if it's a history gap error (Gmail specific)
     if (error instanceof Error && error.message.includes('history')) {
-      console.log('[incremental-sync] History gap detected, scheduling full sync');
+      console.log(
+        '[incremental-sync] History gap detected, scheduling full sync'
+      );
       await helpers.addJob('email:full_sync', { accountId }, { priority: 10 });
       return;
     }
-    
+
     // Let graphile-worker handle retries for transient errors
     throw error;
   }
 };
 
 async function syncGmailIncremental(
-  account: EmailAccountWithSyncStatus,
+  account: EmailAccountWithSyncStatus
 ): Promise<JobResult> {
   const startHistoryId = account.syncStatus?.gmailHistoryId;
 
   if (!startHistoryId) {
-    console.log('[incremental-sync] No history ID found, falling back to full sync');
+    console.log(
+      '[incremental-sync] No history ID found, falling back to full sync'
+    );
     throw new Error('Missing history ID - full sync required');
   }
 
-  console.log(`[incremental-sync] Starting Gmail history sync from historyId: ${startHistoryId}`);
+  console.log(
+    `[incremental-sync] Starting Gmail history sync from historyId: ${startHistoryId}`
+  );
 
   const client = new GmailClient(account);
   const storage = new EmailStorage();
@@ -156,7 +179,9 @@ async function syncGmailIncremental(
     const historyResult = await client.getHistory(startHistoryId);
     newHistoryId = historyResult.historyId;
 
-    console.log(`[incremental-sync] Found ${historyResult.messagesAdded.length} new messages, ${historyResult.messagesDeleted.length} deleted messages`);
+    console.log(
+      `[incremental-sync] Found ${historyResult.messagesAdded.length} new messages, ${historyResult.messagesDeleted.length} deleted messages`
+    );
 
     // Process new messages
     for (const messageId of historyResult.messagesAdded) {
@@ -175,18 +200,17 @@ async function syncGmailIncremental(
           if (message) {
             // Get the raw message for storage
             const rawContent = await client.getRawMessage(messageId);
-            
+
             // Store the email
-            await storage.storeEmail(
-              message,
-              rawContent,
-              account.id
-            );
+            await storage.storeEmail(message, rawContent, account.id);
             emailsProcessed++;
           }
         }
       } catch (error) {
-        console.error(`[incremental-sync] Error processing message ${messageId}:`, error);
+        console.error(
+          `[incremental-sync] Error processing message ${messageId}:`,
+          error
+        );
         // Continue with other messages
       }
     }
@@ -205,7 +229,10 @@ async function syncGmailIncremental(
           },
         });
       } catch (error) {
-        console.error(`[incremental-sync] Error deleting message ${messageId}:`, error);
+        console.error(
+          `[incremental-sync] Error deleting message ${messageId}:`,
+          error
+        );
       }
     }
 
@@ -238,7 +265,10 @@ async function syncGmailIncremental(
           });
         }
       } catch (error) {
-        console.error(`[incremental-sync] Error updating labels for message ${messageId}:`, error);
+        console.error(
+          `[incremental-sync] Error updating labels for message ${messageId}:`,
+          error
+        );
       }
     }
 
@@ -270,7 +300,10 @@ async function syncGmailIncremental(
           });
         }
       } catch (error) {
-        console.error(`[incremental-sync] Error removing labels for message ${messageId}:`, error);
+        console.error(
+          `[incremental-sync] Error removing labels for message ${messageId}:`,
+          error
+        );
       }
     }
 
@@ -283,11 +316,15 @@ async function syncGmailIncremental(
     };
   } catch (error) {
     // Check if it's a history gap error
-    if (error instanceof Error && 
-        (error.message.includes('Invalid history id') || 
-         error.message.includes('historyId') ||
-         ('code' in error && (error as Error & { code: number }).code === 404))) {
-      console.log('[incremental-sync] History gap detected, falling back to full sync');
+    if (
+      error instanceof Error &&
+      (error.message.includes('Invalid history id') ||
+        error.message.includes('historyId') ||
+        ('code' in error && (error as Error & { code: number }).code === 404))
+    ) {
+      console.log(
+        '[incremental-sync] History gap detected, falling back to full sync'
+      );
       throw new Error('History gap detected - full sync required');
     }
     throw error;
@@ -297,17 +334,17 @@ async function syncGmailIncremental(
 async function syncImapIncremental(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   account: any,
-  storage: EmailStorage,
+  storage: EmailStorage
 ): Promise<JobResult> {
   const client = new ImapClient(account);
   let emailsProcessed = 0;
-  
+
   try {
     await client.connect();
-    
+
     // Sync important folders
     const foldersToSync = ['INBOX', 'Sent', 'Drafts'];
-    
+
     for (const folderName of foldersToSync) {
       const folder = await db.folder.findFirst({
         where: {
@@ -315,20 +352,23 @@ async function syncImapIncremental(
           path: { contains: folderName, mode: 'insensitive' },
         },
       });
-      
+
       if (!folder) continue;
-      
+
       console.log(`[incremental-sync] Syncing IMAP folder ${folder.path}`);
-      
+
       // Use a combination of UID and date-based sync for efficiency
-      const lastSyncDate = account.syncStatus?.lastSyncAt || 
+      const lastSyncDate =
+        account.syncStatus?.lastSyncAt ||
         new Date(Date.now() - 7 * 24 * 60 * 60 * 1000); // 7 days ago
-      
+
       // Get messages since last sync date
       const messages = await client.getMessages(folder.path, 500, lastSyncDate); // Increased limit for incremental
-      
-      console.log(`[incremental-sync] Found ${messages.length} messages in ${folder.path} since ${lastSyncDate.toISOString()}`);
-      
+
+      console.log(
+        `[incremental-sync] Found ${messages.length} messages in ${folder.path} since ${lastSyncDate.toISOString()}`
+      );
+
       // Process messages efficiently
       const messageIds = messages.map(m => m.messageId);
       const existingMessages = await db.email.findMany({
@@ -338,21 +378,25 @@ async function syncImapIncremental(
         },
         select: { messageId: true },
       });
-      
-      const existingMessageIds = new Set(existingMessages.map(m => m.messageId));
-      
+
+      const existingMessageIds = new Set(
+        existingMessages.map(m => m.messageId)
+      );
+
       for (const message of messages) {
         if (!existingMessageIds.has(message.messageId)) {
           try {
-            const rawContent = await client.getRawMessage(folder.path, parseInt(message.id));
-            await storage.storeEmail(
-              message,
-              rawContent,
-              account.id
+            const rawContent = await client.getRawMessage(
+              folder.path,
+              parseInt(message.id)
             );
+            await storage.storeEmail(message, rawContent, account.id);
             emailsProcessed++;
           } catch (error) {
-            console.error(`[incremental-sync] Error storing message ${message.messageId}:`, error);
+            console.error(
+              `[incremental-sync] Error storing message ${message.messageId}:`,
+              error
+            );
             // Continue with other messages
           }
         } else {
@@ -371,9 +415,12 @@ async function syncImapIncremental(
           });
         }
       }
-      
+
       // Update folder's last UID for future reference
-      const lastUid = messages.length > 0 ? messages[messages.length - 1].id : folder.lastImapUid;
+      const lastUid =
+        messages.length > 0
+          ? messages[messages.length - 1].id
+          : folder.lastImapUid;
       if (lastUid) {
         await db.folder.update({
           where: { id: folder.id },
@@ -381,11 +428,10 @@ async function syncImapIncremental(
         });
       }
     }
-    
   } finally {
     await client.disconnect();
   }
-  
+
   return {
     success: true,
     emailsProcessed,

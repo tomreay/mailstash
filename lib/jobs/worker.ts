@@ -33,32 +33,44 @@ export async function startWorker() {
     noHandleSignals: false,
     pollInterval: parseInt(process.env.WORKER_POLL_INTERVAL || '1000', 10),
     taskList,
-    logger: new Proxy({}, {
-      get(target, prop) {
-        if (prop === 'scope') {
-          return () => new Proxy({}, {
-            get(_, logLevel) {
-              return (message: string, meta?: unknown) => {
-                const timestamp = new Date().toISOString();
-                console.log(`[${timestamp}] [${String(logLevel)}] ${message}`, meta);
-              };
-            }
-          });
-        }
-        return (message: string, meta?: unknown) => {
-          const timestamp = new Date().toISOString();
-          console.log(`[${timestamp}] [${String(prop)}] ${message}`, meta);
-        };
+    logger: new Proxy(
+      {},
+      {
+        get(target, prop) {
+          if (prop === 'scope') {
+            return () =>
+              new Proxy(
+                {},
+                {
+                  get(_, logLevel) {
+                    return (message: string, meta?: unknown) => {
+                      const timestamp = new Date().toISOString();
+                      console.log(
+                        `[${timestamp}] [${String(logLevel)}] ${message}`,
+                        meta
+                      );
+                    };
+                  },
+                }
+              );
+          }
+          return (message: string, meta?: unknown) => {
+            const timestamp = new Date().toISOString();
+            console.log(`[${timestamp}] [${String(prop)}] ${message}`, meta);
+          };
+        },
       }
-    }) as Logger,
+    ) as Logger,
   });
 
   console.log('Worker started successfully');
-  
+
   runner.events.on('job:success', ({ job }) => {
     console.log(`Job ${job.task_identifier} completed successfully`, {
       jobId: job.id,
-      duration: job.last_error ? Date.now() - new Date(job.run_at).getTime() : undefined,
+      duration: job.last_error
+        ? Date.now() - new Date(job.run_at).getTime()
+        : undefined,
     });
   });
 
@@ -92,7 +104,7 @@ export function getWorkerStatus() {
 }
 
 if (require.main === module) {
-  startWorker().catch((error) => {
+  startWorker().catch(error => {
     console.error('Failed to start worker:', error);
     process.exit(1);
   });

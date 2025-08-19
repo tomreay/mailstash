@@ -1,0 +1,16 @@
+node_modules/
+storage/
+tmp/
+*.log
+*.lock
+package-lock.json
+yarn.lock
+*.md
+*.json
+*.svg
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.ico
+*.webp

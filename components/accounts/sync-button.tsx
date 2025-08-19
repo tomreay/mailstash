@@ -1,56 +1,59 @@
-'use client'
+'use client';
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { RefreshCw, Loader2 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { RefreshCw, Loader2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 interface SyncButtonProps {
-  accountId: string
-  isSyncing: boolean
+  accountId: string;
+  isSyncing: boolean;
 }
 
-export function SyncButton({ accountId, isSyncing: initialSyncing }: SyncButtonProps) {
-  const router = useRouter()
-  const [isSyncing, setIsSyncing] = useState(initialSyncing)
+export function SyncButton({
+  accountId,
+  isSyncing: initialSyncing,
+}: SyncButtonProps) {
+  const router = useRouter();
+  const [isSyncing, setIsSyncing] = useState(initialSyncing);
 
   const handleSync = async (e: React.MouseEvent) => {
-    e.stopPropagation()
-    e.preventDefault()
-    
+    e.stopPropagation();
+    e.preventDefault();
+
     try {
-      setIsSyncing(true)
-      
+      setIsSyncing(true);
+
       const res = await fetch('/api/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accountId })
-      })
+        body: JSON.stringify({ accountId }),
+      });
 
       if (res.ok) {
-        router.refresh()
+        router.refresh();
       }
     } catch (error) {
-      console.error('Failed to start sync:', error)
+      console.error('Failed to start sync:', error);
     } finally {
-      setIsSyncing(false)
+      setIsSyncing(false);
     }
-  }
+  };
 
   return (
     <Button
-      variant="outline"
-      size="sm"
-      className="flex-1"
+      variant='outline'
+      size='sm'
+      className='flex-1'
       onClick={handleSync}
       disabled={isSyncing}
     >
       {isSyncing ? (
-        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+        <Loader2 className='h-4 w-4 mr-2 animate-spin' />
       ) : (
-        <RefreshCw className="h-4 w-4 mr-2" />
+        <RefreshCw className='h-4 w-4 mr-2' />
       )}
       Sync
     </Button>
-  )
+  );
 }

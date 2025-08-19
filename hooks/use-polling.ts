@@ -1,26 +1,30 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef } from 'react';
 
 interface UsePollingOptions {
-  enabled: boolean
-  interval?: number
-  onPoll: () => void | Promise<void>
+  enabled: boolean;
+  interval?: number;
+  onPoll: () => void | Promise<void>;
 }
 
-export function usePolling({ enabled, interval = 2000, onPoll }: UsePollingOptions) {
-  const savedCallback = useRef(onPoll)
+export function usePolling({
+  enabled,
+  interval = 2000,
+  onPoll,
+}: UsePollingOptions) {
+  const savedCallback = useRef(onPoll);
 
   useEffect(() => {
-    savedCallback.current = onPoll
-  }, [onPoll])
+    savedCallback.current = onPoll;
+  }, [onPoll]);
 
   useEffect(() => {
-    if (!enabled) return
+    if (!enabled) return;
 
     const tick = () => {
-      void savedCallback.current()
-    }
+      void savedCallback.current();
+    };
 
-    const id = setInterval(tick, interval)
-    return () => clearInterval(id)
-  }, [enabled, interval])
+    const id = setInterval(tick, interval);
+    return () => clearInterval(id);
+  }, [enabled, interval]);
 }

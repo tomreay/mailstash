@@ -1,23 +1,33 @@
-'use client'
+'use client';
 
-import { use } from 'react'
-import { LoadingSpinner } from '@/components/ui/loading-spinner'
-import { MessageAlert } from '@/components/ui/message-alert'
-import { Header } from '@/components/layout/header'
-import { AccountHeader } from '@/components/settings/account-header'
-import { SettingsTabs } from '@/components/settings-tabs'
-import { useAccount } from '@/hooks/use-account'
-import { useDryRunStatus } from '@/hooks/use-dry-run-status'
-import { useSettingsManager } from '@/hooks/use-settings-manager'
+import { use } from 'react';
+import { LoadingSpinner } from '@/components/ui/loading-spinner';
+import { MessageAlert } from '@/components/ui/message-alert';
+import { Header } from '@/components/layout/header';
+import { AccountHeader } from '@/components/settings/account-header';
+import { SettingsTabs } from '@/components/settings-tabs';
+import { useAccount } from '@/hooks/use-account';
+import { useDryRunStatus } from '@/hooks/use-dry-run-status';
+import { useSettingsManager } from '@/hooks/use-settings-manager';
 
-export default function AccountSettingsPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params)
-  return <AccountSettingsContent id={id} />
+export default function AccountSettingsPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = use(params);
+  return <AccountSettingsContent id={id} />;
 }
 
 function AccountSettingsContent({ id }: { id: string }) {
-  const { account, settings, setSettings, loading, error: fetchError } = useAccount(id)
-  const { dryRunStatus, setDryRunStatus } = useDryRunStatus(id)
+  const {
+    account,
+    settings,
+    setSettings,
+    loading,
+    error: fetchError,
+  } = useAccount(id);
+  const { dryRunStatus, setDryRunStatus } = useDryRunStatus(id);
   const {
     saving,
     error,
@@ -26,43 +36,39 @@ function AccountSettingsContent({ id }: { id: string }) {
     handleSaveSettings,
     handleRunDryRun,
     handleDisableAutoDelete,
-    handleDeleteAccount
-  } = useSettingsManager({ 
-    accountId: id, 
-    settings, 
+    handleDeleteAccount,
+  } = useSettingsManager({
+    accountId: id,
+    settings,
     setSettings,
-    setDryRunStatus 
-  })
+    setDryRunStatus,
+  });
 
   if (loading || !account || !settings) {
-    return <LoadingSpinner fullScreen />
+    return <LoadingSpinner fullScreen />;
   }
 
-  const displayError = error || fetchError
+  const displayError = error || fetchError;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className='min-h-screen bg-gray-50'>
       <Header />
 
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <AccountHeader 
+      <main className='max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8'>
+        <AccountHeader
           account={account}
           onDeleteAccount={handleDeleteAccount}
         />
 
         {displayError && (
-          <MessageAlert 
-            type="error" 
-            message={displayError} 
-            className="mb-6"
-          />
+          <MessageAlert type='error' message={displayError} className='mb-6' />
         )}
-        
+
         {success && (
-          <MessageAlert 
-            type="success" 
-            message="Settings saved successfully!" 
-            className="mb-6"
+          <MessageAlert
+            type='success'
+            message='Settings saved successfully!'
+            className='mb-6'
           />
         )}
 
@@ -80,5 +86,5 @@ function AccountSettingsContent({ id }: { id: string }) {
         />
       </main>
     </div>
-  )
+  );
 }

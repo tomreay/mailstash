@@ -15,7 +15,7 @@ export function RefreshButton() {
       const interval = setInterval(() => {
         router.refresh();
       }, 5000); // Refresh every 5 seconds
-      
+
       return () => clearInterval(interval);
     }
   }, [autoRefresh, router]);
@@ -28,31 +28,33 @@ export function RefreshButton() {
   };
 
   return (
-    <div className="flex items-center gap-2">
+    <div className='flex items-center gap-2'>
       <Button
-        variant="outline"
-        size="sm"
+        variant='outline'
+        size='sm'
         onClick={() => setAutoRefresh(!autoRefresh)}
       >
         {autoRefresh ? (
           <>
-            <Pause className="h-4 w-4 mr-1" />
+            <Pause className='h-4 w-4 mr-1' />
             Pause
           </>
         ) : (
           <>
-            <Play className="h-4 w-4 mr-1" />
+            <Play className='h-4 w-4 mr-1' />
             Resume
           </>
         )}
       </Button>
       <Button
-        variant="outline"
-        size="sm"
+        variant='outline'
+        size='sm'
         onClick={handleManualRefresh}
         disabled={isRefreshing}
       >
-        <RefreshCw className={`h-4 w-4 mr-1 ${isRefreshing ? 'animate-spin' : ''}`} />
+        <RefreshCw
+          className={`h-4 w-4 mr-1 ${isRefreshing ? 'animate-spin' : ''}`}
+        />
         Refresh
       </Button>
     </div>

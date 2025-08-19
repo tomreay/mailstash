@@ -1,6 +1,10 @@
-import {makeWorkerUtils, WorkerUtils} from 'graphile-worker';
-import type {FolderSyncPayload, FullSyncPayload, IncrementalSyncPayload} from './types';
-import type {MboxImportPayload} from './handlers/mbox-import';
+import { makeWorkerUtils, WorkerUtils } from 'graphile-worker';
+import type {
+  FolderSyncPayload,
+  FullSyncPayload,
+  IncrementalSyncPayload,
+} from './types';
+import type { MboxImportPayload } from './handlers/mbox-import';
 
 let workerUtils: WorkerUtils | null = null;
 
@@ -10,23 +14,22 @@ async function getWorkerUtils(): Promise<WorkerUtils> {
     if (!connectionString) {
       throw new Error('DATABASE_URL environment variable is required');
     }
-    
+
     workerUtils = await makeWorkerUtils({
       connectionString,
     });
   }
-  
+
   return workerUtils;
 }
 
-export async function
-scheduleFullSync(
+export async function scheduleFullSync(
   accountId: string,
   payload?: Partial<FullSyncPayload>,
   options?: { runAt?: Date; priority?: number }
 ) {
   const utils = await getWorkerUtils();
-  
+
   const jobPayload: FullSyncPayload = {
     accountId,
     ...payload,
@@ -45,7 +48,7 @@ export async function scheduleIncrementalSync(
   options?: { runAt?: Date; priority?: number }
 ) {
   const utils = await getWorkerUtils();
-  
+
   const jobPayload: IncrementalSyncPayload = {
     accountId,
     ...payload,
@@ -61,7 +64,12 @@ export async function scheduleIncrementalSync(
 export async function addJob(
   taskIdentifier: string,
   payload: Record<string, unknown>,
-  options?: { runAt?: Date; priority?: number; jobKey?: string; maxAttempts?: number }
+  options?: {
+    runAt?: Date;
+    priority?: number;
+    jobKey?: string;
+    maxAttempts?: number;
+  }
 ) {
   const utils = await getWorkerUtils();
   return await utils.addJob(taskIdentifier, payload, options);
@@ -75,7 +83,7 @@ export async function scheduleFolderSync(
   options?: { runAt?: Date; priority?: number }
 ) {
   const utils = await getWorkerUtils();
-  
+
   const jobPayload: FolderSyncPayload = {
     accountId,
     folderId,
@@ -84,15 +92,15 @@ export async function scheduleFolderSync(
   };
 
   return await utils.addJob('email:folder_sync', jobPayload, {
-      ...options,
-      jobKey: `folder_sync:${accountId}:${folderId}`,
-      maxAttempts: 3,
+    ...options,
+    jobKey: `folder_sync:${accountId}:${folderId}`,
+    maxAttempts: 3,
   });
 }
 
 export async function getActiveJobs() {
   const utils = await getWorkerUtils();
-  
+
   const query = `
     SELECT 
       j.id,
@@ -110,15 +118,15 @@ export async function getActiveJobs() {
     ORDER BY j.locked_at DESC
   `;
 
-  return await utils.withPgClient(async (pgClient) => {
-      const {rows} = await pgClient.query(query);
-      return rows;
+  return await utils.withPgClient(async pgClient => {
+    const { rows } = await pgClient.query(query);
+    return rows;
   });
 }
 
 export async function getPendingJobs(limit = 100) {
   const utils = await getWorkerUtils();
-  
+
   const query = `
     SELECT 
       j.id,
@@ -136,15 +144,15 @@ export async function getPendingJobs(limit = 100) {
     LIMIT $1
   `;
 
-  return await utils.withPgClient(async (pgClient) => {
-    const {rows} = await pgClient.query(query, [limit]);
+  return await utils.withPgClient(async pgClient => {
+    const { rows } = await pgClient.query(query, [limit]);
     return rows;
   });
 }
 
 export async function getFailedJobs(limit = 100) {
   const utils = await getWorkerUtils();
-  
+
   const query = `
     SELECT 
       j.id,
@@ -162,17 +170,17 @@ export async function getFailedJobs(limit = 100) {
     LIMIT $1
   `;
 
-  return await utils.withPgClient(async (pgClient) => {
-    const {rows} = await pgClient.query(query, [limit]);
+  return await utils.withPgClient(async pgClient => {
+    const { rows } = await pgClient.query(query, [limit]);
     return rows;
   });
 }
 
 export async function retryJob(jobId: string) {
   const utils = await getWorkerUtils();
-  
+
   // Use graphile-worker's reschedule_jobs function
-  await utils.withPgClient(async (pgClient) => {
+  await utils.withPgClient(async pgClient => {
     await pgClient.query(
       `SELECT graphile_worker.reschedule_jobs(ARRAY[$1::bigint])`,
       [jobId]
@@ -191,7 +199,7 @@ export async function scheduleMboxImport(
   options?: { runAt?: Date; priority?: number }
 ) {
   const utils = await getWorkerUtils();
-  
+
   const jobPayload: MboxImportPayload = {
     accountId,
     mboxFilePath,
@@ -199,7 +207,7 @@ export async function scheduleMboxImport(
 
   return await utils.addJob('email:mbox_import', jobPayload, {
     ...options,
-    jobKey: `mbox_import:${accountId}`
+    jobKey: `mbox_import:${accountId}`,
   });
 }
 
