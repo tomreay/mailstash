@@ -45,10 +45,16 @@ export async function startWorker() {
                   get(_, logLevel) {
                     return (message: string, meta?: unknown) => {
                       const timestamp = new Date().toISOString();
-                      console.log(
-                        `[${timestamp}] [${String(logLevel)}] ${message}`,
-                        meta
-                      );
+                      if (meta && Object.keys(meta).length > 0) {
+                        console.log(
+                          `[${timestamp}] [${String(logLevel)}] ${message}`,
+                          meta
+                        );
+                      } else {
+                        console.log(
+                          `[${timestamp}] [${String(logLevel)}] ${message}`
+                        );
+                      }
                     };
                   },
                 }
@@ -56,7 +62,11 @@ export async function startWorker() {
           }
           return (message: string, meta?: unknown) => {
             const timestamp = new Date().toISOString();
-            console.log(`[${timestamp}] [${String(prop)}] ${message}`, meta);
+            if (meta && Object.keys(meta).length > 0) {
+              console.log(`[${timestamp}] [${String(prop)}] ${message}`, meta);
+            } else {
+              console.log(`[${timestamp}] [${String(prop)}] ${message}`);
+            }
           };
         },
       }

@@ -44,3 +44,4 @@ next-env.d.ts
 dev.db
 storage
 tmp/
+dist

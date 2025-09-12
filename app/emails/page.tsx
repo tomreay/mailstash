@@ -8,6 +8,8 @@ import { EmailList } from '@/components/email-list';
 import { EmailsService } from '@/lib/services/emails.service';
 import { AccountsService } from '@/lib/services/accounts.service';
 
+export const dynamic = 'force-dynamic';
+
 interface EmailsPageProps {
   searchParams: Promise<{
     page?: string;

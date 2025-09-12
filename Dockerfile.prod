@@ -1,0 +1,78 @@
+# Multi-stage production build for Next.js with standalone output
+FROM node:20-alpine AS deps
+RUN apk add --no-cache libc6-compat
+WORKDIR /app
+
+# Copy package files for yarn
+COPY package.json yarn.lock ./
+RUN yarn install --frozen-lockfile
+
+# Rebuild the source code only when needed
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+
+# Copy source files
+COPY package.json yarn.lock ./
+COPY prisma ./prisma
+COPY public ./public
+COPY app ./app
+COPY lib ./lib
+COPY components ./components
+COPY hooks ./hooks
+COPY types ./types
+COPY next.config.ts ./
+COPY tsconfig.json ./
+COPY postcss.config.mjs ./
+
+# Generate Prisma Client
+RUN yarn prisma generate
+
+# Build the Next.js application
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_ENV=production
+RUN yarn build
+
+# Production image, copy all the files and run next
+FROM node:20-alpine AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# Create non-root user
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
+
+# Copy necessary files from builder
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+
+# Copy Prisma schema and migrations for runtime
+COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+
+# Install Prisma CLI for migrations
+RUN npm install -g prisma
+
+# Create storage directories
+RUN mkdir -p /app/storage/emails /app/storage/attachments
+RUN chown -R nextjs:nodejs /app/storage
+
+# Set correct permissions
+RUN chown -R nextjs:nodejs /app
+
+USER nextjs
+
+EXPOSE 3000
+
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:3000/api/health', (r) => {r.statusCode === 200 ? process.exit(0) : process.exit(1)})"
+
+CMD ["node", "server.js"]

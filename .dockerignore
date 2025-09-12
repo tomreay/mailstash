@@ -1,0 +1,66 @@
+# Dependencies
+node_modules
+.yarn/cache
+.yarn/install-state.gz
+.pnp.*
+
+# Next.js build output
+.next
+out
+build
+dist
+
+# Development files
+.git
+.gitignore
+.env*
+!.env.example
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Testing
+coverage
+.nyc_output
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Documentation
+*.md
+!README.md
+docs
+
+# Temporary files
+tmp
+temp
+*.tmp
+
+# Storage (in production these are volumes)
+storage/emails/*
+storage/attachments/*
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db

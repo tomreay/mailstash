@@ -8,7 +8,6 @@ MailStash is a modern email archiving solution that automatically downloads, sto
 - 📧 **Multi-Provider Support** - Gmail API and IMAP for other providers
 - 🗄️ **Open Storage Format** - EML files for maximum portability
 - 🔍 **Full-Text Search** - SQLite FTS5 for fast email search
-- 🛡️ **Virus Scanning** - ClamAV integration for attachment security
 - 📱 **Modern UI** - Clean, responsive interface built with Next.js and Tailwind CSS
 - 🐳 **Docker Ready** - Easy deployment with Docker Compose
 - 🔄 **Automatic Sync** - Scheduled email synchronization
@@ -19,7 +18,7 @@ MailStash is a modern email archiving solution that automatically downloads, sto
 ### Prerequisites
 
 - Node.js 18+ and Yarn
-- Docker and Docker Compose (for virus scanning)
+- Docker and Docker Compose
 
 ### Installation
 
@@ -43,17 +42,12 @@ MailStash is a modern email archiving solution that automatically downloads, sto
    yarn db:push
    ```
 
-4. **Start ClamAV (optional but recommended)**
-   ```bash
-   docker-compose up -d clamav
-   ```
-
-5. **Start the development server**
+4. **Start the development server**
    ```bash
    yarn dev
    ```
 
-6. **Open your browser**
+5**Open your browser**
    Navigate to `http://localhost:3000`
 
 ## Google OAuth2 Setup
@@ -87,7 +81,6 @@ MailStash is a modern email archiving solution that automatically downloads, sto
 - **NextAuth.js** - Authentication and OAuth2 handling
 - **ImapFlow** - IMAP client for email servers
 - **Google APIs** - Gmail integration
-- **ClamAV** - Virus scanning for attachments
 - **Mailparser** - Email parsing and attachment extraction
 
 ### Storage Structure

@@ -1,0 +1,107 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: mailstash-postgres-prod
+    restart: always
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-mailstash}
+      - POSTGRES_USER=${POSTGRES_USER:-mailstash}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sh:/docker-entrypoint-initdb.d/01-init.sh:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-mailstash} -d ${POSTGRES_DB:-mailstash}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - mailstash-network
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    container_name: mailstash-app-prod
+    restart: always
+    ports:
+      - '${PORT:-3000}:3000'
+    environment:
+      - NODE_ENV=production
+      - POSTGRES_USER=${POSTGRES_USER:-mailstash}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB:-mailstash}
+      - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:3000}
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - EMAIL_STORAGE_PATH=/app/storage/emails
+      - ATTACHMENT_STORAGE_PATH=/app/storage/attachments
+    volumes:
+      - email_storage:/app/storage/emails
+      - attachment_storage:/app/storage/attachments
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - mailstash-network
+    command: >
+      sh -c "
+        echo 'Waiting for database to be ready...';
+        sleep 5;
+        echo 'Constructing DATABASE_URL with URL-encoded password...';
+        export DATABASE_URL=\$(node -e \"console.log('postgresql://' + encodeURIComponent(process.env.POSTGRES_USER) + ':' + encodeURIComponent(process.env.POSTGRES_PASSWORD) + '@postgres:5432/' + encodeURIComponent(process.env.POSTGRES_DB))\");
+        echo 'Running database migrations...';
+        prisma migrate deploy;
+        echo 'Starting application...';
+        node server.js
+      "
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: mailstash-worker-prod
+    restart: always
+    environment:
+      - NODE_ENV=production
+      - POSTGRES_USER=${POSTGRES_USER:-mailstash}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB:-mailstash}
+      - EMAIL_STORAGE_PATH=/app/storage/emails
+      - ATTACHMENT_STORAGE_PATH=/app/storage/attachments
+      - WORKER_CONCURRENCY=${WORKER_CONCURRENCY:-1}
+      - WORKER_POLL_INTERVAL=${WORKER_POLL_INTERVAL:-1000}
+    volumes:
+      - email_storage:/app/storage/emails
+      - attachment_storage:/app/storage/attachments
+    depends_on:
+      postgres:
+        condition: service_healthy
+      app:
+        condition: service_started
+    networks:
+      - mailstash-network
+    command: >
+      sh -c "
+        echo 'Waiting for database and migrations...';
+        sleep 15;
+        echo 'Constructing DATABASE_URL with URL-encoded password...';
+        export DATABASE_URL=\$(node -e \"console.log('postgresql://' + encodeURIComponent(process.env.POSTGRES_USER) + ':' + encodeURIComponent(process.env.POSTGRES_PASSWORD) + '@postgres:5432/' + encodeURIComponent(process.env.POSTGRES_DB))\");
+        echo 'DATABASE_URL constructed successfully';
+        echo 'Starting worker...';
+        node --enable-source-maps dist/lib/jobs/worker.js
+      "
+
+volumes:
+  postgres_data:
+    driver: local
+  email_storage:
+    driver: local
+  attachment_storage:
+    driver: local
+
+networks:
+  mailstash-network:
+    driver: bridge

@@ -1,0 +1,63 @@
+# Dockerfile for Graphile Worker service
+FROM node:20-alpine AS deps
+RUN apk add --no-cache libc6-compat
+WORKDIR /app
+
+# Copy package files for yarn
+COPY package.json yarn.lock ./
+RUN yarn install --frozen-lockfile
+
+# Build stage
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+
+# Copy source files
+COPY package.json yarn.lock ./
+COPY prisma ./prisma
+COPY lib ./lib
+COPY types ./types
+COPY tsconfig.worker.json ./
+
+# Generate Prisma Client
+RUN yarn prisma generate
+
+# Compile TypeScript and resolve path aliases
+RUN yarn tsc --project tsconfig.worker.json && \
+    yarn tsc-alias -p tsconfig.worker.json
+
+# Production stage
+FROM node:20-alpine AS runner
+WORKDIR /app
+
+# Create non-root user
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 worker
+
+# Copy package files first
+COPY package.json yarn.lock ./
+
+# Install production dependencies only
+RUN yarn install --production --frozen-lockfile
+
+# Copy compiled code and necessary files
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+
+# Create storage directories
+RUN mkdir -p /app/storage/emails /app/storage/attachments
+RUN chown -R worker:nodejs /app/storage
+
+# Set correct permissions
+RUN chown -R worker:nodejs /app
+
+USER worker
+
+# Health check - checks if the worker process is running
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+  CMD pgrep -f "graphile-worker" > /dev/null || exit 1
+
+# Start the worker (paths are already resolved at build time)
+CMD ["node", "--enable-source-maps", "dist/lib/jobs/worker.js"]

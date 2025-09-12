@@ -18,24 +18,5 @@ services:
       start_period: 30s
     restart: unless-stopped
 
-  clamav:
-    image: clamav/clamav:latest
-    platform: linux/amd64
-    container_name: mailstash-clamav
-    ports:
-      - '3310:3310'
-    volumes:
-      - clamav_data:/var/lib/clamav
-    environment:
-      - CLAMAV_NO_FRESHCLAM=false
-    healthcheck:
-      test: ['CMD', 'clamdscan', '--ping']
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-    restart: unless-stopped
-
 volumes:
   postgres_data:
-  clamav_data:

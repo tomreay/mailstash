@@ -13,6 +13,7 @@ const SCOPES = [
 
 export const { handlers, signIn, auth } = NextAuth({
   adapter: PrismaAdapter(db),
+  trustHost: true,
   providers: [
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID!,

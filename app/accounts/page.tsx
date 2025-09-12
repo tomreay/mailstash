@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Header } from '@/components/header';
 import { AccountList } from '@/components/accounts/account-list';
 
+export const dynamic = 'force-dynamic';
+
 export default async function AccountsPage() {
   const session = await auth();
 

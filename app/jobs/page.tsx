@@ -3,6 +3,8 @@ import { RefreshButton } from '@/components/jobs/refresh-button';
 import { JobsList } from '@/components/jobs/jobs-list';
 import { AlertCircle, Clock } from 'lucide-react';
 
+export const dynamic = 'force-dynamic';
+
 export default async function JobsPage() {
   // Fetch all jobs data on the server
   const [activeJobs, pendingJobs, failedJobs] = await Promise.all([

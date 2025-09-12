@@ -5,6 +5,8 @@ import { RecentActivity } from '@/components/recent-activity';
 import { QuickActions } from '@/components/quick-actions-card';
 import { Header } from '@/components/header';
 
+export const dynamic = 'force-dynamic';
+
 export default async function Home() {
   const session = await auth();
 
