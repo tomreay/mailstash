@@ -7,20 +7,22 @@ MailStash is a modern email archiving solution that automatically downloads, sto
 - 🔐 **Secure Authentication** - OAuth2 for Gmail, secure credential storage
 - 📧 **Multi-Provider Support** - Gmail API and IMAP for other providers
 - 🗄️ **Open Storage Format** - EML files for maximum portability
-- 🔍 **Full-Text Search** - SQLite FTS5 for fast email search
+- 🔍 **Full-Text Search** - PostgreSQL full-text search
 - 📱 **Modern UI** - Clean, responsive interface built with Next.js and Tailwind CSS
-- 🐳 **Docker Ready** - Easy deployment with Docker Compose
-- 🔄 **Automatic Sync** - Scheduled email synchronization
-- 📊 **Analytics** - Storage usage and email statistics
+- 🐳 **Docker Ready** - Production-ready Docker Compose setup
+- 🔄 **Background Jobs** - Graphile Worker for reliable email synchronization
+- 🗑️ **Auto-Delete** - Configurable retention policies per account
+- 📦 **Mbox Import** - Import existing email archives
 
 ## Quick Start
 
 ### Prerequisites
 
-- Node.js 18+ and Yarn
-- Docker and Docker Compose
+- Node.js 20+ and Yarn
+- PostgreSQL 15+ (or use Docker)
+- Docker and Docker Compose (for production)
 
-### Installation
+### Development Setup
 
 1. **Install dependencies**
    ```bash
@@ -28,26 +30,32 @@ MailStash is a modern email archiving solution that automatically downloads, sto
    ```
 
 2. **Set up environment variables**
-   Edit `.env` with your configuration:
-   ```env
-   DATABASE_URL="file:./dev.db"
-   NEXTAUTH_URL=http://localhost:3000
-   NEXTAUTH_SECRET=your-secret-key-here
-   GOOGLE_CLIENT_ID=your-google-client-id
-   GOOGLE_CLIENT_SECRET=your-google-client-secret
+   ```bash
+   cp .env.example .env.local
+   # Edit .env.local with your configuration
    ```
 
-3. **Set up the database**
+3. **Start PostgreSQL** (if not using Docker)
+   ```bash
+   docker-compose up -d postgres
+   ```
+
+4. **Set up the database**
    ```bash
    yarn db:push
    ```
 
-4. **Start the development server**
+5. **Start the development server**
    ```bash
    yarn dev
    ```
 
-5**Open your browser**
+6. **Start the worker** (in another terminal)
+   ```bash
+   yarn worker
+   ```
+
+7. **Open your browser**
    Navigate to `http://localhost:3000`
 
 ## Google OAuth2 Setup
@@ -60,25 +68,46 @@ MailStash is a modern email archiving solution that automatically downloads, sto
    - Authorized redirect URIs: `http://localhost:3000/api/auth/callback/google`
 5. Copy the Client ID and Client Secret to your `.env` file
 
-## Docker Deployment
+## Production Deployment
 
-### Self-Hosted Deployment
+### Quick Start with Docker
 
-1. **Build and start all services**
+1. **Clone the repository**
    ```bash
-   docker-compose up -d
+   git clone <repository-url>
+   cd mailstash
    ```
 
-2. **Access the application**
+2. **Set up environment**
+   ```bash
+   cp .env.example .env
+   # Edit .env with your production values
+   # IMPORTANT: Set strong passwords for POSTGRES_PASSWORD and NEXTAUTH_SECRET
+   ```
+
+3. **Deploy with Docker Compose**
+   ```bash
+   docker-compose --env-file .env -f docker-compose.prod.yml up -d --build
+   ```
+
+4. **Access the application**
    Navigate to `http://localhost:3000`
+
+### Production Architecture
+
+- **PostgreSQL** - Primary database
+- **Next.js App** - Main application (standalone build)
+- **Graphile Worker** - Background job processing
+- **Docker Volumes** - Persistent storage for emails and attachments
 
 ## Architecture
 
 ### Core Components
 
-- **Next.js App** - Main application with API routes
-- **Prisma ORM** - Database management with SQLite
+- **Next.js 15** - Main application with App Router
+- **Prisma ORM** - Database management with PostgreSQL
 - **NextAuth.js** - Authentication and OAuth2 handling
+- **Graphile Worker** - Reliable background job processing
 - **ImapFlow** - IMAP client for email servers
 - **Google APIs** - Gmail integration
 - **Mailparser** - Email parsing and attachment extraction
@@ -117,9 +146,70 @@ mailstash/
 
 ### Scripts
 
-- `yarn dev` - Start development server
+- `yarn dev` - Start development server (with Turbopack)
 - `yarn build` - Build for production
 - `yarn start` - Start production server
+- `yarn worker` - Start the background worker
 - `yarn db:push` - Update database schema
+- `yarn db:migrate` - Run database migrations
 - `yarn db:studio` - Open Prisma Studio
 - `yarn lint` - Run ESLint
+- `yarn format` - Format code with Prettier
+
+## Environment Variables
+
+### Required
+- `DATABASE_URL` - PostgreSQL connection string
+- `NEXTAUTH_SECRET` - Secret for session encryption (generate with `openssl rand -base64 32`)
+- `NEXTAUTH_URL` - Application URL (e.g., `http://localhost:3000`)
+
+### Optional
+- `GOOGLE_CLIENT_ID` - For Gmail OAuth integration
+- `GOOGLE_CLIENT_SECRET` - For Gmail OAuth integration
+- `EMAIL_STORAGE_PATH` - Path for email storage (default: `./storage/emails`)
+- `ATTACHMENT_STORAGE_PATH` - Path for attachments (default: `./storage/attachments`)
+- `WORKER_CONCURRENCY` - Number of concurrent jobs (default: 5)
+
+## Key Features
+
+### Email Account Management
+- Support for Gmail (OAuth) and IMAP accounts
+- Per-account sync settings and schedules
+- Auto-delete policies with configurable retention periods
+- Archive-only mode for read-only email preservation
+
+### Background Jobs
+- Full sync for initial email download
+- Incremental sync for updates
+- Folder-specific synchronization
+- Automatic cleanup based on retention policies
+- Mbox file import for existing archives
+
+### Storage
+- Emails stored as EML files for portability
+- Hierarchical folder structure by account
+- Separate attachment storage with deduplication
+- Configurable storage paths
+
+## Troubleshooting
+
+### Common Issues
+
+**Database Connection**
+- Ensure PostgreSQL is running
+- Check DATABASE_URL format: `postgresql://user:password@host:5432/database`
+- For special characters in passwords, use URL encoding
+
+**Worker Not Processing Jobs**
+- Check worker logs: `docker-compose -f docker-compose.prod.yml logs worker`
+- Verify Graphile Worker tables exist in database
+- Ensure DATABASE_URL is correctly set
+
+**Gmail Authentication**
+- Enable Gmail API in Google Cloud Console
+- Add redirect URI: `http://localhost:3000/api/auth/callback/google`
+- Ensure OAuth consent screen is configured
+
+## License
+
+MIT

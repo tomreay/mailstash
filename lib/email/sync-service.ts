@@ -1,7 +1,6 @@
 import { GmailClient } from './gmail-client';
 import { ImapClient } from './imap-client';
 import { EmailStorage } from '@/lib/storage/email-storage';
-import { virusScanner } from '@/lib/security/virus-scanner';
 import { EmailAccount } from '@/types/email';
 import { db } from '@/lib/db';
 
@@ -125,11 +124,6 @@ export class SyncService {
 
           // Store the email
           await this.storage.storeEmail(message, rawContent, account.id);
-
-          // Scan attachments if any
-          if (message.hasAttachments) {
-            await this.scanEmailAttachments(message.messageId);
-          }
         }
       }
 
@@ -218,11 +212,6 @@ export class SyncService {
 
               // Store the email
               await this.storage.storeEmail(message, rawContent, account.id);
-
-              // Scan attachments if any
-              if (message.hasAttachments) {
-                await this.scanEmailAttachments(message.messageId);
-              }
             }
           }
         }
@@ -232,18 +221,6 @@ export class SyncService {
     }
   }
 
-  private async scanEmailAttachments(messageId: string): Promise<void> {
-    const attachments = await db.attachment.findMany({
-      where: {
-        email: { messageId },
-        isScanned: false,
-      },
-    });
-
-    for (const attachment of attachments) {
-      await virusScanner.scanAttachment(attachment.id, attachment.filePath);
-    }
-  }
 }
 
 // Singleton instance

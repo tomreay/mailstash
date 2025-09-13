@@ -1156,13 +1156,6 @@
   dependencies:
     tslib "^2.4.0"
 
-"@types/clamscan@^2.4.1":
-  version "2.4.1"
-  resolved "https://registry.npmjs.org/@types/clamscan/-/clamscan-2.4.1.tgz"
-  integrity sha512-KhBHhXsMGDoEkk87VRtHtDsjoqXD3epu+a09c1sjW7xqpvoihScxhZNdNIPegVCLDvPOp4khiIpy02XabseztQ==
-  dependencies:
-    "@types/node" "*"
-
 "@types/debug@^4.1.10":
   version "4.1.12"
   resolved "https://registry.npmjs.org/@types/debug/-/debug-4.1.12.tgz"
@@ -1794,11 +1787,6 @@ citty@^0.1.6:
   integrity sha512-tskPPKEs8D2KPafUypv2gxwJP8h/OaJmC82QQGGDQcHvXX43xF2VDACcJVmZ0EuSxkpO9Kc4MlrA3q0+FG58AQ==
   dependencies:
     consola "^3.2.3"
-
-clamscan@^2.4.0:
-  version "2.4.0"
-  resolved "https://registry.npmjs.org/clamscan/-/clamscan-2.4.0.tgz"
-  integrity sha512-XBOxUiGOcQGuKmCn5qaM5rIK153fGCwsvJMbjVtcnNJ+j/YHrSj2gKNjyP65yr/E8JsKTTDtKYFG++p7Lzigyw==
 
 class-variance-authority@^0.7.1:
   version "0.7.1"

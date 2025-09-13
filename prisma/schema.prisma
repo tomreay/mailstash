@@ -140,8 +140,6 @@ model Attachment {
   contentType String
   size        Int
   filePath    String   // Path to attachment file
-  isScanned   Boolean  @default(false)
-  scanResult  String?  // "clean", "virus", "error"
   
   emailId     String
   email       Email    @relation(fields: [emailId], references: [id], onDelete: Cascade)

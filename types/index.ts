@@ -51,8 +51,6 @@ export interface Attachment {
   contentType: string;
   size: number;
   filePath: string;
-  isScanned: boolean;
-  scanResult: string | null;
   emailId: string;
   createdAt: Date;
   updatedAt: Date;
