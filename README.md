@@ -93,6 +93,67 @@ MailStash is a modern email archiving solution that automatically downloads, sto
 4. **Access the application**
    Navigate to `http://localhost:3000`
 
+### Building and Publishing Docker Images
+
+To build and push the MailStash images to Docker Hub with multi-platform support:
+
+1. **Setup Docker Buildx** (one-time setup)
+   ```bash
+   # Create a new builder instance
+   docker buildx create --name multibuilder --use
+
+   # Verify it's working
+   docker buildx inspect --bootstrap
+   ```
+
+2. **Build and push multi-platform images**
+   ```bash
+   # Login to Docker Hub first
+   docker login
+
+   # Build and push the main application image for both AMD64 and ARM64
+   docker buildx build --platform linux/amd64,linux/arm64 \
+     -f Dockerfile.prod \
+     -t gettby/mailstash-app:latest \
+     --push .
+
+   # Build and push the worker image for both platforms
+   docker buildx build --platform linux/amd64,linux/arm64 \
+     -f Dockerfile.worker \
+     -t gettby/mailstash-worker:latest \
+     --push .
+   ```
+
+3. **Tag with version** (optional)
+   ```bash
+   # Build with version tag (replace X.Y.Z with your version)
+   docker buildx build --platform linux/amd64,linux/arm64 \
+     -f Dockerfile.prod \
+     -t gettby/mailstash-app:latest \
+     -t gettby/mailstash-app:X.Y.Z \
+     --push .
+
+   docker buildx build --platform linux/amd64,linux/arm64 \
+     -f Dockerfile.worker \
+     -t gettby/mailstash-worker:latest \
+     -t gettby/mailstash-worker:X.Y.Z \
+     --push .
+   ```
+
+4. **Alternative: Build for single platform only**
+   ```bash
+   # If you only need AMD64 (most servers)
+   docker buildx build --platform linux/amd64 \
+     -f Dockerfile.prod \
+     -t gettby/mailstash-app:latest \
+     --push .
+
+   docker buildx build --platform linux/amd64 \
+     -f Dockerfile.worker \
+     -t gettby/mailstash-worker:latest \
+     --push .
+   ```
+
 ### Production Architecture
 
 - **PostgreSQL** - Primary database

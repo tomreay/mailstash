@@ -1,4 +1,6 @@
-# Multi-stage production build for Next.js with standalone output
+# Multi-stage production build for Next.js with optimized layer caching
+
+# Stage 1: Build dependencies
 FROM node:20-alpine AS deps
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
@@ -7,62 +9,73 @@ WORKDIR /app
 COPY package.json yarn.lock ./
 RUN yarn install --frozen-lockfile
 
-# Rebuild the source code only when needed
+# Stage 2: Base runtime image with system dependencies
+FROM node:20-alpine AS base
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# Install tini for proper signal handling and create user
+RUN apk add --no-cache tini && \
+    addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
+
+# Install Prisma CLI for migrations (required for production)
+RUN npm install -g prisma
+
+# Create storage and tmp directories with correct permissions
+RUN mkdir -p /app/storage/emails /app/storage/attachments /app/tmp && \
+    chown -R nextjs:nodejs /app/storage /app/tmp
+
+# Stage 3: Build application
 FROM node:20-alpine AS builder
 WORKDIR /app
+
+# Copy dependencies from deps stage
 COPY --from=deps /app/node_modules ./node_modules
 
-# Copy source files
+# Copy package files and configuration (less likely to change)
 COPY package.json yarn.lock ./
+COPY next.config.ts ./
+COPY tsconfig.json ./
+COPY postcss.config.mjs ./
 COPY prisma ./prisma
+
+# Generate Prisma Client
+RUN yarn prisma generate
+
+# Copy public assets (changes less frequently)
 COPY public ./public
+
+# Copy type definitions (changes less frequently)
+COPY types ./types
+
+# Copy application code (most likely to change)
 COPY app ./app
 COPY lib ./lib
 COPY components ./components
 COPY hooks ./hooks
-COPY types ./types
-COPY next.config.ts ./
-COPY tsconfig.json ./
-COPY postcss.config.mjs ./
-
-# Generate Prisma Client
-RUN yarn prisma generate
 
 # Build the Next.js application
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 RUN yarn build
 
-# Production image, copy all the files and run next
-FROM node:20-alpine AS runner
-WORKDIR /app
+# Stage 4: Final production image
+FROM base AS runner
 
-ENV NODE_ENV=production
-ENV NEXT_TELEMETRY_DISABLED=1
+# Copy Next.js standalone output (includes node_modules for Next.js)
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 
-# Create non-root user
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
+# Copy static files (rarely changes after build)
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
-# Copy necessary files from builder
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
-
-# Copy Prisma schema and migrations for runtime
-COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
-
-# Install Prisma CLI for migrations
-RUN npm install -g prisma
-
-# Create storage directories
-RUN mkdir -p /app/storage/emails /app/storage/attachments
-RUN chown -R nextjs:nodejs /app/storage
-
-# Set correct permissions
-RUN chown -R nextjs:nodejs /app
+# Copy Prisma files (changes when schema changes)
+COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@prisma/client ./node_modules/@prisma/client
 
 USER nextjs
 
@@ -70,6 +83,9 @@ EXPOSE 3000
 
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
+
+# Use tini for proper signal handling
+ENTRYPOINT ["/sbin/tini", "--"]
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \

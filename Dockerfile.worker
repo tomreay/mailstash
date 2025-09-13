@@ -1,4 +1,6 @@
-# Dockerfile for Graphile Worker service
+# Multi-stage build for Graphile Worker service with optimized layer caching
+
+# Stage 1: Build dependencies
 FROM node:20-alpine AS deps
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
@@ -7,53 +9,75 @@ WORKDIR /app
 COPY package.json yarn.lock ./
 RUN yarn install --frozen-lockfile
 
-# Build stage
+# Stage 2: Production dependencies (separate for better caching)
+FROM node:20-alpine AS prod-deps
+WORKDIR /app
+
+# Copy package files
+COPY package.json yarn.lock ./
+
+# Install production dependencies ONLY and clean cache
+RUN yarn install --production --frozen-lockfile --network-timeout 100000 && \
+    yarn cache clean
+
+# Stage 3: Base runtime image with system dependencies
+FROM node:20-alpine AS base
+WORKDIR /app
+
+# Install tini for proper signal handling and create user
+RUN apk add --no-cache tini && \
+    addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 worker
+
+# Create storage directories with correct permissions
+RUN mkdir -p /app/storage/emails /app/storage/attachments && \
+    chown -R worker:nodejs /app/storage
+
+# Stage 4: Build application code
 FROM node:20-alpine AS builder
 WORKDIR /app
+
+# Copy dependencies from deps stage
 COPY --from=deps /app/node_modules ./node_modules
 
-# Copy source files
+# Copy package files and Prisma schema first (less likely to change)
 COPY package.json yarn.lock ./
 COPY prisma ./prisma
-COPY lib ./lib
-COPY types ./types
 COPY tsconfig.worker.json ./
 
 # Generate Prisma Client
 RUN yarn prisma generate
 
+# Copy type definitions (changes less frequently)
+COPY types ./types
+
+# Copy application code last (most likely to change)
+COPY lib ./lib
+
 # Compile TypeScript and resolve path aliases
 RUN yarn tsc --project tsconfig.worker.json && \
     yarn tsc-alias -p tsconfig.worker.json
 
-# Production stage
-FROM node:20-alpine AS runner
-WORKDIR /app
+# Stage 5: Final production image
+FROM base AS runner
 
-# Create non-root user
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 worker
+# Copy production dependencies (rarely changes)
+COPY --from=prod-deps --chown=worker:nodejs /app/node_modules ./node_modules
 
-# Copy package files first
-COPY package.json yarn.lock ./
+# Copy Prisma client files (changes when schema changes)
+COPY --from=builder --chown=worker:nodejs /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder --chown=worker:nodejs /app/node_modules/@prisma/client ./node_modules/@prisma/client
 
-# Install production dependencies only
-RUN yarn install --production --frozen-lockfile
+# Copy prisma schema for reference
+COPY --chown=worker:nodejs prisma/schema.prisma ./prisma/schema.prisma
 
-# Copy compiled code and necessary files
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
-
-# Create storage directories
-RUN mkdir -p /app/storage/emails /app/storage/attachments
-RUN chown -R worker:nodejs /app/storage
-
-# Set correct permissions
-RUN chown -R worker:nodejs /app
+# Copy compiled application code (changes most frequently)
+COPY --from=builder --chown=worker:nodejs /app/dist /app/dist
 
 USER worker
+
+# Use tini for proper signal handling
+ENTRYPOINT ["/sbin/tini", "--"]
 
 # Health check - checks if the worker process is running
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \

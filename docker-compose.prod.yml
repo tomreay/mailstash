@@ -39,8 +39,8 @@ services:
       - EMAIL_STORAGE_PATH=/app/storage/emails
       - ATTACHMENT_STORAGE_PATH=/app/storage/attachments
     volumes:
-      - email_storage:/app/storage/emails
-      - attachment_storage:/app/storage/attachments
+      - ${EMAIL_STORAGE_LOCATION}:/app/storage/emails
+      - ${ATTACHMENT_STORAGE_LOCATION}:/app/storage/attachments
     depends_on:
       postgres:
         condition: service_healthy
@@ -74,8 +74,8 @@ services:
       - WORKER_CONCURRENCY=${WORKER_CONCURRENCY:-1}
       - WORKER_POLL_INTERVAL=${WORKER_POLL_INTERVAL:-1000}
     volumes:
-      - email_storage:/app/storage/emails
-      - attachment_storage:/app/storage/attachments
+      - ${EMAIL_STORAGE_LOCATION}:/app/storage/emails
+      - ${ATTACHMENT_STORAGE_LOCATION}:/app/storage/attachments
     depends_on:
       postgres:
         condition: service_healthy
@@ -96,10 +96,6 @@ services:
 
 volumes:
   postgres_data:
-    driver: local
-  email_storage:
-    driver: local
-  attachment_storage:
     driver: local
 
 networks:
