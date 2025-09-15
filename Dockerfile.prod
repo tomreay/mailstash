@@ -25,7 +25,7 @@ RUN apk add --no-cache tini && \
 RUN npm install -g prisma
 
 # Create storage and tmp directories with correct permissions
-RUN mkdir -p /app/storage/emails /app/storage/attachments /app/tmp && \
+RUN mkdir -p /app/storage/emails /app/storage/attachments /app/tmp /app/tmp/mbox-uploads && \
     chown -R nextjs:nodejs /app/storage /app/tmp
 
 # Stage 3: Build application

@@ -10,6 +10,7 @@ import { Upload as TusUpload } from 'tus-js-client';
 interface MboxUploadProps {
   onFileSelect: (file: File) => void;
   onUploadComplete?: (filepath: string) => void;
+  onUploadStatusChange?: (isUploading: boolean) => void;
   selectedFile: File | null;
   disabled?: boolean;
 }
@@ -17,6 +18,7 @@ interface MboxUploadProps {
 export function MboxUpload({
   onFileSelect,
   onUploadComplete,
+  onUploadStatusChange,
   selectedFile,
   disabled,
 }: MboxUploadProps) {
@@ -45,6 +47,7 @@ export function MboxUpload({
 
   const uploadFile = async (file: File) => {
     setIsUploading(true);
+    onUploadStatusChange?.(true);
     setUploadProgress(0);
     setUploadError(null);
     setIsPaused(false);
@@ -55,9 +58,14 @@ export function MboxUpload({
   };
 
   const startTusUpload = (file: File) => {
+    // Build absolute URL to ensure correct protocol (HTTPS in production)
+    const endpoint = `${window.location.protocol}//${window.location.host}/api/accounts/upload`;
+
     const upload = new TusUpload(file, {
-      endpoint: '/api/accounts/upload',
-      retryDelays: [0, 3000, 5000, 10000, 20000],
+      endpoint,
+      chunkSize: 10 * 1024 * 1024, // 10MB chunks for better performance
+      retryDelays: [0, 1000, 3000, 5000],
+      parallelUploads: 1,
       metadata: {
         filename: file.name,
         filetype: file.type || 'application/mbox',
@@ -66,6 +74,7 @@ export function MboxUpload({
         console.error('TUS upload failed:', error);
         setUploadError(`Upload failed: ${error.message || 'Unknown error'}`);
         setIsUploading(false);
+        onUploadStatusChange?.(false);
         setUploadProgress(0);
         setCurrentUpload(null);
       },
@@ -83,11 +92,14 @@ export function MboxUpload({
         console.log('Upload complete, reference:', filepath);
 
         setUploadedPath(filepath);
+        setIsUploading(false);
+        onUploadStatusChange?.(false);
+        setUploadProgress(100);
+
+        // Call onUploadComplete after state updates
         if (onUploadComplete) {
           onUploadComplete(filepath);
         }
-        setIsUploading(false);
-        setUploadProgress(100);
       },
       onBeforeRequest: req => {
         // Add authentication header if needed

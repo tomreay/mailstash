@@ -10,17 +10,23 @@ import { MboxUpload } from '@/components/mbox-upload';
 import { createArchiveAccount } from './actions';
 import { useFormStatus } from 'react-dom';
 
-function SubmitButton({ disabled }: { disabled: boolean }) {
+function SubmitButton({ disabled, isUploading }: { disabled: boolean; isUploading?: boolean }) {
   const { pending } = useFormStatus();
+
+  const buttonText = isUploading
+    ? 'Uploading file...'
+    : pending
+    ? 'Creating account...'
+    : 'Import Archive';
 
   return (
     <Button type='submit' disabled={disabled || pending} className='flex-1'>
-      {pending ? (
+      {pending || isUploading ? (
         <Loader2 className='h-4 w-4 mr-2 animate-spin' />
       ) : (
         <Archive className='h-4 w-4 mr-2' />
       )}
-      Import Archive
+      {buttonText}
     </Button>
   );
 }
@@ -28,6 +34,7 @@ function SubmitButton({ disabled }: { disabled: boolean }) {
 export function ArchiveAccountForm() {
   const [archiveFile, setArchiveFile] = useState<File | null>(null);
   const [archiveFilePath, setArchiveFilePath] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(formData: FormData) {
@@ -58,10 +65,15 @@ export function ArchiveAccountForm() {
               onFileSelect={file => {
                 console.log('Parent received file:', file);
                 setArchiveFile(file);
+                // Reset path when new file is selected
+                setArchiveFilePath(null);
               }}
               onUploadComplete={path => {
                 console.log('Parent received upload path:', path);
                 setArchiveFilePath(path);
+              }}
+              onUploadStatusChange={status => {
+                setIsUploading(status);
               }}
               selectedFile={archiveFile}
             />
@@ -98,7 +110,10 @@ export function ArchiveAccountForm() {
               Back
             </Button>
           </Link>
-          <SubmitButton disabled={!archiveFile || !archiveFilePath} />
+          <SubmitButton
+            disabled={!archiveFile || isUploading || !archiveFilePath}
+            isUploading={isUploading}
+          />
         </div>
       </form>
     </>

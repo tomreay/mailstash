@@ -41,6 +41,7 @@ services:
     volumes:
       - ${EMAIL_STORAGE_LOCATION}:/app/storage/emails
       - ${ATTACHMENT_STORAGE_LOCATION}:/app/storage/attachments
+      - mbox_uploads:/app/tmp/mbox-uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -76,6 +77,7 @@ services:
     volumes:
       - ${EMAIL_STORAGE_LOCATION}:/app/storage/emails
       - ${ATTACHMENT_STORAGE_LOCATION}:/app/storage/attachments
+      - mbox_uploads:/app/tmp/mbox-uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -96,6 +98,8 @@ services:
 
 volumes:
   postgres_data:
+    driver: local
+  mbox_uploads:
     driver: local
 
 networks:

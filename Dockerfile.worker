@@ -30,8 +30,8 @@ RUN apk add --no-cache tini && \
     adduser --system --uid 1001 worker
 
 # Create storage directories with correct permissions
-RUN mkdir -p /app/storage/emails /app/storage/attachments && \
-    chown -R worker:nodejs /app/storage
+RUN mkdir -p /app/storage/emails /app/storage/attachments /app/tmp/mbox-uploads && \
+    chown -R worker:nodejs /app/storage /app/tmp
 
 # Stage 4: Build application code
 FROM node:20-alpine AS builder

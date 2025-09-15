@@ -10,6 +10,21 @@ fs.mkdir(uploadDir, { recursive: true }).catch(console.error);
 // Create TUS server instance
 const server = new Server({
   path: '/api/accounts/upload',
+  respectForwardedHeaders: true,
+  generateUrl: (req, { proto, host, path, id }) => {
+    // Get protocol from forwarded headers or request
+    const protocol = req.headers.get('x-forwarded-proto') ||
+                     req.headers.get('x-scheme') ||
+                     (req.url?.startsWith('https') ? 'https' : 'http');
+    const hostname = req.headers.get('x-forwarded-host') ||
+                    req.headers.get('host') ||
+                    host;
+
+    // Ensure we use HTTPS in production
+    const finalProtocol = hostname?.includes('localhost') ? protocol : 'https';
+
+    return `${finalProtocol}://${hostname}${path}/${id}`;
+  },
   datastore: new FileStore({
     directory: uploadDir,
   }),
