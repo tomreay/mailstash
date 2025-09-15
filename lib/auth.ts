@@ -37,7 +37,8 @@ export const { handlers, signIn, auth } = NextAuth({
   },
   events: {
     async linkAccount({ user, account }) {
-      // This event fires when an account is linked to a user (including first sign in)
+      // This event only fires on FIRST sign in when linking account to user
+      // It's used for initial setup only, not for adding additional email accounts
       if (
         account.provider === 'google' &&
         account.access_token &&
@@ -45,37 +46,34 @@ export const { handlers, signIn, auth } = NextAuth({
         user.id
       ) {
         try {
-          console.log(
-            `Creating/updating emailAccount for ${user.email} after account link`
-          );
-          await db.emailAccount.upsert({
-            where: {
-              email: user.email,
-            },
-            update: {
-              accessToken: account.access_token,
-              refreshToken: account.refresh_token,
-              expiresAt: account.expires_at
-                ? new Date(account.expires_at * 1000)
-                : null,
-              gmailId: account.providerAccountId,
-              userId: user.id,
-            },
-            create: {
-              email: user.email,
-              displayName: user.name || undefined,
-              provider: 'gmail',
-              accessToken: account.access_token,
-              refreshToken: account.refresh_token,
-              expiresAt: account.expires_at
-                ? new Date(account.expires_at * 1000)
-                : null,
-              gmailId: account.providerAccountId,
-              userId: user.id,
-            },
+          // Only create the initial EmailAccount for first-time sign up
+          const existingAccounts = await db.emailAccount.count({
+            where: { userId: user.id }
           });
+
+          // Only create if this is the user's first email account
+          if (existingAccounts === 0) {
+            console.log(
+              `Creating initial EmailAccount for user ${user.email} on first sign in`
+            );
+
+            await db.emailAccount.create({
+              data: {
+                email: user.email,
+                displayName: user.name || undefined,
+                provider: 'gmail',
+                accessToken: account.access_token,
+                refreshToken: account.refresh_token,
+                expiresAt: account.expires_at
+                  ? new Date(account.expires_at * 1000)
+                  : null,
+                gmailId: account.providerAccountId,
+                userId: user.id,
+              },
+            });
+          }
         } catch (error) {
-          console.error('Error creating/updating email account:', error);
+          console.error('Error creating initial email account:', error);
         }
       }
     },

@@ -11,8 +11,8 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { signIn } from 'next-auth/react';
 import { AccountCreationLayout } from '@/components/account-creation-layout';
+import { useRouter } from 'next/navigation';
 
 export default function GmailAccountPage() {
   const [loading, setLoading] = useState(false);
@@ -23,8 +23,8 @@ export default function GmailAccountPage() {
       setLoading(true);
       setError(null);
 
-      // Sign in with Google - this will create the account automatically
-      await signIn('google', { callbackUrl: '/accounts' });
+      // Use our custom OAuth flow that doesn't affect the user session
+      window.location.href = '/api/auth/gmail?action=connect';
     } catch {
       setError('Failed to connect with Google. Please try again.');
       setLoading(false);

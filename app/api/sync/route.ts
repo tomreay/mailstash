@@ -8,7 +8,7 @@ import {
 } from '@/lib/jobs/queue';
 import { SyncResponse } from '@/types';
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
     const session = await auth();
 
@@ -16,17 +16,29 @@ export async function POST() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get user's email account
+    // Get the accountId from the request body
+    const body = await request.json();
+    const { accountId } = body;
+
+    if (!accountId) {
+      return NextResponse.json(
+        { error: 'Account ID is required' },
+        { status: 400 }
+      );
+    }
+
+    // Get the specific email account
     const account = await db.emailAccount.findFirst({
       where: {
-        userId: session.user.id,
+        id: accountId,
+        userId: session.user.id, // Ensure the account belongs to the user
         isActive: true,
       },
     });
 
     if (!account) {
       return NextResponse.json(
-        { error: 'Email account not found' },
+        { error: 'Email account not found or unauthorized' },
         { status: 404 }
       );
     }
