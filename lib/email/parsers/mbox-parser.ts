@@ -91,6 +91,8 @@ export class MboxParser {
     const messages: Buffer[] = [];
     let resolver: ((value: Buffer | null) => void) | null = null;
     let rejecter: ((error: Error) => void) | null = null;
+    let streamEnded = false;
+    let errorOccurred: Error | null = null;
 
     mbox.on('data', (msg: Buffer) => {
       if (resolver) {
@@ -103,14 +105,20 @@ export class MboxParser {
 
     mbox.on('error', (err: Error) => {
       console.error(`[mbox-parser] Error in parse stream:`, err);
+      errorOccurred = err;
+      streamEnded = true;
       if (rejecter) {
         rejecter(err);
         rejecter = null;
+      } else if (resolver) {
+        resolver(null);
+        resolver = null;
       }
     });
 
     mbox.on('end', () => {
-      console.log(`[mbox-parser] Stream ended. Total messages received`);
+      console.log(`[mbox-parser] Stream ended. Total messages buffered: ${messages.length}`);
+      streamEnded = true;
       if (resolver) {
         resolver(null);
         resolver = null;
@@ -119,14 +127,30 @@ export class MboxParser {
 
     // Generator to yield parsed messages
     let yieldCount = 0;
+    let parseErrors = 0;
+
     while (true) {
       let rawMessage: Buffer | null;
 
       if (messages.length > 0) {
         rawMessage = messages.shift()!;
+      } else if (streamEnded) {
+        // Stream has ended and no more messages in buffer
+        console.log(
+          `[mbox-parser] Finished parsing. Total yielded: ${yieldCount}, Parse errors: ${parseErrors}`
+        );
+        if (errorOccurred) {
+          throw errorOccurred;
+        }
+        break;
       } else {
-        // Wait for next message
+        // Wait for next message or stream end
         rawMessage = await new Promise<Buffer | null>((resolve, reject) => {
+          // Check if stream already ended while we were setting up the promise
+          if (streamEnded) {
+            resolve(null);
+            return;
+          }
           resolver = resolve;
           rejecter = reject;
         });
@@ -135,7 +159,7 @@ export class MboxParser {
       if (rawMessage === null) {
         // End of stream
         console.log(
-          `[mbox-parser] Finished parsing. Total yielded: ${yieldCount}`
+          `[mbox-parser] Finished parsing. Total yielded: ${yieldCount}, Parse errors: ${parseErrors}`
         );
         break;
       }
@@ -148,6 +172,11 @@ export class MboxParser {
           console.log(`[mbox-parser] Yielded ${yieldCount} parsed emails`);
         }
         yield emailData;
+      } else {
+        parseErrors++;
+        if (parseErrors % 100 === 0) {
+          console.log(`[mbox-parser] Parse errors so far: ${parseErrors}`);
+        }
       }
     }
   }
