@@ -74,6 +74,10 @@ services:
       - ATTACHMENT_STORAGE_PATH=/app/storage/attachments
       - WORKER_CONCURRENCY=${WORKER_CONCURRENCY:-1}
       - WORKER_POLL_INTERVAL=${WORKER_POLL_INTERVAL:-1000}
+      - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:3000}
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
     volumes:
       - ${EMAIL_STORAGE_LOCATION}:/app/storage/emails
       - ${ATTACHMENT_STORAGE_LOCATION}:/app/storage/attachments
