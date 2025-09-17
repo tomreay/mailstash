@@ -9,6 +9,7 @@ import { GmailClient } from '@/lib/email/gmail-client';
 import { EmailStorage } from '@/lib/storage/email-storage';
 import { db } from '@/lib/db';
 import { SyncJob } from '@/types';
+import parser from 'cron-parser';
 
 export const incrementalSyncHandler: Task = async (payload, helpers) => {
   let syncJob: SyncJob | null = null;
@@ -90,37 +91,58 @@ export const incrementalSyncHandler: Task = async (payload, helpers) => {
       result
     );
 
-    // Schedule next incremental sync based on activity
-    const nextSyncDelay = getNextSyncDelay(result.emailsProcessed || 0);
-    await helpers.addJob(
-      'email:incremental_sync',
-      {
-        accountId,
-        gmailHistoryId: result.nextSyncData?.gmailHistoryId,
-        lastSyncAt: new Date().toISOString(),
-      },
-      { runAt: new Date(Date.now() + nextSyncDelay) }
-    );
-
-    // Schedule auto-delete processing if enabled
+    // Get account settings to determine sync frequency
     const accountSettings = await db.emailAccountSettings.findUnique({
       where: { accountId },
-      select: { autoDeleteMode: true },
     });
 
-    if (accountSettings && accountSettings.autoDeleteMode !== 'off') {
-      await helpers.addJob(
-        'email:auto_delete',
-        { accountId },
-        {
-          runAt: new Date(Date.now() + 60000), // Run 1 minute after sync
-          priority: -1, // Lower priority than sync jobs
-        }
+    if (accountSettings === null) {
+        throw new Error('[incremental-sync] Account settings not found');
+    }
+
+    // Only schedule next sync if not paused and not manual
+    if (!accountSettings?.syncPaused && accountSettings?.syncFrequency !== 'manual') {
+      const nextSyncDelay = getNextSyncDelay(
+        result.emailsProcessed || 0,
+        accountSettings.syncFrequency
       );
+      await helpers.addJob(
+        'email:incremental_sync',
+        {
+          accountId,
+          gmailHistoryId: result.nextSyncData?.gmailHistoryId,
+          lastSyncAt: new Date().toISOString(),
+        },
+        { runAt: new Date(Date.now() + nextSyncDelay) }
+      );
+    } else {
       console.log(
-        `[incremental-sync] Scheduled auto-delete for account ${accountId}`
+        `[incremental-sync] Not scheduling next sync - sync is ${accountSettings?.syncPaused ? 'paused' : 'manual'} for account ${accountId}`
       );
     }
+
+    // Schedule auto-delete processing if enabled (reuse accountSettings from above)
+    if (accountSettings.autoDeleteMode && accountSettings.autoDeleteMode !== 'off') {
+      // Fetch autoDeleteMode if not already fetched
+      const settings = await db.emailAccountSettings.findUnique({
+        where: { accountId },
+        select: { autoDeleteMode: true },
+      });
+      if (settings && settings.autoDeleteMode !== 'off') {
+        await helpers.addJob(
+          'email:auto_delete',
+          { accountId },
+          {
+            runAt: new Date(Date.now() + 60000), // Run 1 minute after sync
+            priority: -1, // Lower priority than sync jobs
+          }
+        );
+        console.log(
+          `[incremental-sync] Scheduled auto-delete for account ${accountId}`
+        );
+      }
+    }
+
   } catch (error) {
     console.error(
       `[incremental-sync] Incremental sync failed for account ${accountId}`,
@@ -438,13 +460,29 @@ async function syncImapIncremental(
   };
 }
 
-function getNextSyncDelay(emailsProcessed: number): number {
-  // Adaptive sync intervals based on activity
-  if (emailsProcessed > 10) {
-    return 5 * 60 * 1000; // 5 minutes if high activity
-  } else if (emailsProcessed > 0) {
-    return 15 * 60 * 1000; // 15 minutes if some activity
-  } else {
-    return 30 * 60 * 1000; // 30 minutes if no activity
+function getNextSyncDelay(emailsProcessed: number, syncFrequency: string): number {
+  // Parse cron expression to determine next run time
+  try {
+    const interval = parser.parse(syncFrequency);
+    const nextDate = interval.next().toDate();
+    const delay = nextDate.getTime() - Date.now();
+
+    // If the delay is too short (less than 1 minute), use minimum delay
+    // This can happen if the cron expression runs very frequently
+    const MIN_DELAY = 60 * 1000; // 1 minute
+    return Math.max(delay, MIN_DELAY);
+  } catch (error) {
+    console.error(
+      `[incremental-sync] Error parsing cron expression '${syncFrequency}', falling back to adaptive intervals`,
+      error
+    );
+    // Fall back to adaptive intervals
+    if (emailsProcessed > 10) {
+      return 5 * 60 * 1000;
+    } else if (emailsProcessed > 0) {
+      return 15 * 60 * 1000;
+    } else {
+      return 30 * 60 * 1000;
+    }
   }
 }
