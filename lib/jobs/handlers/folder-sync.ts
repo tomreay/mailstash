@@ -8,30 +8,20 @@ import { GmailClient } from '@/lib/email/gmail-client';
 import { ImapClient } from '@/lib/email/imap-client';
 import { EmailStorage } from '@/lib/storage/email-storage';
 import { db } from '@/lib/db';
-import { Folder, SyncJob } from '@/types';
+import { Folder } from '@/types';
 import { EmailAccount } from '@/types/email';
 
 export const folderSyncHandler: Task = async payload => {
-  let syncJob: SyncJob | null = null;
-  const { accountId, folderId, folderPath, lastImapUid } =
+  const { accountId, folderId, folderPath, lastSyncId } =
     payload as FolderSyncPayload;
 
   console.log(`[folder-sync] Starting folder sync for ${folderPath}`, {
     accountId,
     folderId,
-    lastImapUid,
+    lastSyncId,
   });
 
   try {
-    // Create sync job record
-    syncJob = await db.syncJob.create({
-      data: {
-        type: 'folder_sync',
-        status: 'processing',
-        accountId,
-        startedAt: new Date(),
-      },
-    });
     const account: EmailAccountWithFolders | null =
       await db.emailAccount.findUnique({
         where: { id: accountId },
@@ -66,25 +56,15 @@ export const folderSyncHandler: Task = async payload => {
     }
 
     // Update folder sync metadata
-    if (result.nextSyncData?.lastImapUid) {
+    if (result.nextSyncData?.lastSyncId) {
       await db.folder.update({
         where: { id: folderId },
         data: {
-          lastImapUid: result.nextSyncData.lastImapUid,
+          lastSyncId: result.nextSyncData.lastSyncId,
           updatedAt: new Date(),
         },
       });
     }
-
-    // Update job status to completed
-    await db.syncJob.update({
-      where: { id: syncJob.id },
-      data: {
-        status: 'completed',
-        completedAt: new Date(),
-        emailsProcessed: result.emailsProcessed || 0,
-      },
-    });
 
     console.log(
       `[folder-sync] Folder sync completed for ${folderPath}`,
@@ -92,19 +72,6 @@ export const folderSyncHandler: Task = async payload => {
     );
   } catch (error) {
     console.error(`[folder-sync] Folder sync failed for ${folderPath}`, error);
-
-    // Update job status to failed
-    if (syncJob) {
-      await db.syncJob.update({
-        where: { id: syncJob.id },
-        data: {
-          status: 'failed',
-          error: error instanceof Error ? error.message : 'Unknown error',
-          completedAt: new Date(),
-        },
-      });
-    }
-
     throw error;
   }
 };
@@ -200,13 +167,13 @@ async function syncImapFolder(
     const lastUid =
       messages.length > 0
         ? Math.max(...messages.map(m => parseInt(m.id)))
-        : folder.lastImapUid;
+        : (folder.lastSyncId ? parseInt(folder.lastSyncId) : null);
 
     return {
       success: true,
       emailsProcessed,
       nextSyncData: {
-        lastImapUid: lastUid?.toString(),
+        lastSyncId: lastUid?.toString(),
       },
     };
   } finally {

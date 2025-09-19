@@ -1,5 +1,6 @@
 import { StatsDAO } from '@/lib/dao/stats.dao';
 import { AccountsDAO } from '@/lib/dao/accounts.dao';
+import { JobStatusService } from '@/lib/services/job-status.service';
 import { StatsResponse } from '@/types';
 
 /**
@@ -14,7 +15,7 @@ export class StatsService {
     accountId?: string
   ): Promise<StatsResponse> {
     // Get user's email account(s)
-    const accounts = await AccountsDAO.findAccountsWithSyncStatus(
+    const accounts = await AccountsDAO.findAccountsWithJobStatus(
       userId,
       accountId
     );
@@ -38,14 +39,14 @@ export class StatsService {
   private static async getSingleAccountStats(account: {
     id: string;
     _count: { emails: number };
-    syncStatus?: {
-      lastSyncAt?: Date | null;
-      syncStatus?: string | null;
-    } | null;
+    jobStatuses: Array<{
+      lastRunAt?: Date | null;
+      success?: boolean;
+    }>;
   }): Promise<StatsResponse> {
     const stats = await StatsDAO.getAccountStats(account.id);
 
-    return StatsDAO.formatSingleAccountStats(account, stats);
+    return await StatsDAO.formatSingleAccountStats(account, stats);
   }
 
   /**
@@ -54,10 +55,10 @@ export class StatsService {
   private static async getAggregatedAccountsStats(
     accounts: Array<{
       id: string;
-      syncStatus?: {
-        lastSyncAt?: Date | null;
-        syncStatus?: string | null;
-      } | null;
+      jobStatuses: Array<{
+        lastRunAt?: Date | null;
+        success?: boolean;
+      }>;
     }>
   ): Promise<StatsResponse> {
     const accountIds = accounts.map(a => a.id);
@@ -69,7 +70,7 @@ export class StatsService {
     const mostRecentSync = StatsDAO.findMostRecentSync(accounts);
 
     // Determine overall sync status
-    const overallSyncStatus = StatsDAO.determineOverallSyncStatus(accounts);
+    const overallSyncStatus = await StatsDAO.determineOverallSyncStatus(accounts);
 
     return StatsDAO.formatAggregatedStats(
       stats,

@@ -2,28 +2,15 @@ import { Task } from 'graphile-worker';
 import { FullSyncPayload, JobResult } from '../types';
 import { syncService } from '@/lib/email/sync-service';
 import { db } from '@/lib/db';
-import { SyncJob } from '@/types';
 import { JobStatusService } from '@/lib/services/job-status.service';
 
 export const fullSyncHandler: Task = async (payload, helpers) => {
-  let syncJob: SyncJob | null = null;
   const { accountId, resumeFromCheckpoint } = payload as FullSyncPayload;
 
   console.log(`[full-sync] Starting full sync for account ${accountId}`);
 
   try {
-    // DUAL WRITE: Create old sync job record
-    syncJob = await db.syncJob.create({
-      data: {
-        type: 'full_sync',
-        status: 'processing',
-        accountId,
-        startedAt: new Date(),
-        emailsProcessed: 0,
-      },
-    });
-
-    // DUAL WRITE: Record job start in new JobStatus
+    // Record job start in JobStatus
     await JobStatusService.recordStart(accountId, 'sync');
     // Check if account exists and is active
     const account = await db.emailAccount.findUnique({
@@ -39,7 +26,7 @@ export const fullSyncHandler: Task = async (payload, helpers) => {
       console.log(
         `[full-sync] Account ${accountId} is not active, skipping sync`
       );
-      // DUAL WRITE: Record skip in new JobStatus
+      // Record skip in JobStatus
       await JobStatusService.recordSuccess(accountId, 'sync', {
         skipped: true,
         reason: 'Account inactive',
@@ -47,18 +34,6 @@ export const fullSyncHandler: Task = async (payload, helpers) => {
       return;
     }
 
-    // DUAL WRITE: Update old sync status to syncing
-    await db.syncStatus.upsert({
-      where: { accountId },
-      update: {
-        syncStatus: 'syncing',
-        errorMessage: null,
-      },
-      create: {
-        accountId,
-        syncStatus: 'syncing',
-      },
-    });
 
     // Track progress through sync status instead of modifying job
     console.log(`[full-sync] Starting sync for account ${accountId}`);
@@ -77,17 +52,7 @@ export const fullSyncHandler: Task = async (payload, helpers) => {
       where: { accountId },
     });
 
-    // DUAL WRITE: Update old sync job to completed
-    await db.syncJob.update({
-      where: { id: syncJob.id },
-      data: {
-        status: 'completed',
-        completedAt: new Date(),
-        emailsProcessed: emailCount,
-      },
-    });
-
-    // DUAL WRITE: Record successful completion in new JobStatus
+    // Record successful completion in JobStatus
     await JobStatusService.recordSuccess(accountId, 'sync', {
       emailsProcessed: emailCount,
       provider: account.provider,
@@ -107,20 +72,13 @@ export const fullSyncHandler: Task = async (payload, helpers) => {
       result
     );
 
-    // Get sync status to include history ID for Gmail accounts
-    const syncStatus = await db.syncStatus.findUnique({
-      where: { accountId },
-      select: { gmailHistoryId: true },
-    });
-
-    // DUAL WRITE: Update old sync status to idle
-    await db.syncStatus.update({
-      where: { accountId },
-      data: {
-        syncStatus: 'idle',
-        lastSyncAt: new Date(),
-        errorMessage: null,
+    // Get history ID for Gmail accounts from _SYNC_STATE folder
+    const syncFolder = await db.folder.findFirst({
+      where: {
+        accountId,
+        path: '_SYNC_STATE',
       },
+      select: { lastSyncId: true },
     });
 
     // Schedule next incremental sync in 5 minutes
@@ -128,11 +86,17 @@ export const fullSyncHandler: Task = async (payload, helpers) => {
       'email:incremental_sync',
       {
         accountId,
-        gmailHistoryId: syncStatus?.gmailHistoryId,
+        gmailHistoryId: syncFolder?.lastSyncId,
         lastSyncAt: new Date().toISOString(),
       },
-      { runAt: new Date(Date.now() + 5 * 60 * 1000) }
+      {
+        runAt: new Date(Date.now() + 5 * 60 * 1000),
+        jobKey: `email:incremental_sync:${accountId}`
+      }
     );
+
+    // Explicitly return to signal successful completion
+    return;
   } catch (error) {
     console.error(
       `[full-sync] Full sync failed for account ${accountId}`,
@@ -142,19 +106,7 @@ export const fullSyncHandler: Task = async (payload, helpers) => {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     const isFinalAttempt = helpers.job.attempts >= helpers.job.max_attempts;
 
-    // DUAL WRITE: Update old sync job to failed
-    if (syncJob) {
-      await db.syncJob.update({
-        where: { id: syncJob.id },
-        data: {
-          status: 'failed',
-          error: errorMessage,
-          completedAt: new Date(),
-        },
-      });
-    }
-
-    // DUAL WRITE: Record failure in new JobStatus
+    // Record failure in JobStatus
     await JobStatusService.recordFailure(accountId, 'sync', errorMessage, {
       attempt: helpers.job.attempts,
       maxAttempts: helpers.job.max_attempts,
@@ -166,20 +118,6 @@ export const fullSyncHandler: Task = async (payload, helpers) => {
     if (error instanceof Error && isTransientError(error)) {
       throw error;
     }
-
-    // DUAL WRITE: For permanent errors, update old sync status and don't retry
-    await db.syncStatus.upsert({
-      where: { accountId },
-      update: {
-        syncStatus: 'error',
-        errorMessage: errorMessage,
-      },
-      create: {
-        accountId,
-        syncStatus: 'error',
-        errorMessage: errorMessage,
-      },
-    });
 
     // Don't throw to prevent retries for permanent errors
     console.error('[full-sync] Permanent error, not retrying', error);

@@ -88,11 +88,8 @@ export class AccountsService {
     // Create account
     const account = await AccountsDAO.createAccount(accountData);
 
-    // Create default settings and sync status
-    await Promise.all([
-      AccountsDAO.createDefaultSettings(account.id),
-      AccountsDAO.createSyncStatus(account.id),
-    ]);
+    // Create default settings
+    await AccountsDAO.createDefaultSettings(account.id);
 
     return {
       id: account.id,

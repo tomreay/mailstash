@@ -1,6 +1,5 @@
 import { Task } from 'graphile-worker';
 import {
-  EmailAccountWithSyncStatus,
   IncrementalSyncPayload,
   JobResult,
 } from '../types';
@@ -9,11 +8,9 @@ import { GmailClient } from '@/lib/email/gmail-client';
 import { EmailStorage } from '@/lib/storage/email-storage';
 import { db } from '@/lib/db';
 import { JobStatusService } from '@/lib/services/job-status.service';
-import { SyncJob } from '@/types';
 import parser from 'cron-parser';
 
 export const incrementalSyncHandler: Task = async (payload, helpers) => {
-  let syncJob: SyncJob | null = null;
   const { accountId } = payload as IncrementalSyncPayload;
 
   console.log(
@@ -21,23 +18,10 @@ export const incrementalSyncHandler: Task = async (payload, helpers) => {
   );
 
   try {
-    // DUAL WRITE: Create old sync job record
-    syncJob = await db.syncJob.create({
-      data: {
-        type: 'incremental_sync',
-        status: 'processing',
-        accountId,
-        startedAt: new Date(),
-      },
-    });
-
-    // DUAL WRITE: Record job start in new JobStatus
+    // Record job start in JobStatus
     await JobStatusService.recordStart(accountId, 'sync');
     const account = await db.emailAccount.findUnique({
       where: { id: accountId },
-      include: {
-        syncStatus: true,  // Include for old structure
-      },
     });
 
     if (!account) {
@@ -66,36 +50,22 @@ export const incrementalSyncHandler: Task = async (payload, helpers) => {
       throw new Error(`Unsupported provider: ${account.provider}`);
     }
 
-    // DUAL WRITE: Update old sync status
-    await db.syncStatus.upsert({
-      where: { accountId },
-      update: {
-        syncStatus: 'idle',
-        lastSyncAt: new Date(),
-        errorMessage: null,
-        gmailHistoryId: result.nextSyncData?.gmailHistoryId,
-      },
-      create: {
-        accountId,
-        syncStatus: 'idle',
-        lastSyncAt: new Date(),
-        gmailHistoryId: result.nextSyncData?.gmailHistoryId,
-      },
-    });
-
-    // DUAL WRITE: Update old sync job
-    if (syncJob) {
-      await db.syncJob.update({
-        where: { id: syncJob.id },
+    // Update Gmail history ID if applicable
+    if (result.nextSyncData?.gmailHistoryId) {
+      await db.folder.update({
+        where: {
+          accountId_path: {
+            accountId,
+            path: '_SYNC_STATE',
+          },
+        },
         data: {
-          status: 'completed',
-          completedAt: new Date(),
-          emailsProcessed: result.emailsProcessed || 0,
+          lastSyncId: result.nextSyncData.gmailHistoryId,
         },
       });
     }
 
-    // DUAL WRITE: Record successful completion in new JobStatus
+    // Record successful completion in JobStatus
     await JobStatusService.recordSuccess(accountId, 'sync', {
       emailsProcessed: result.emailsProcessed || 0,
       provider: account.provider,
@@ -126,7 +96,10 @@ export const incrementalSyncHandler: Task = async (payload, helpers) => {
       await helpers.addJob(
         'email:incremental_sync',
         { accountId },
-        { runAt: new Date(Date.now() + nextSyncDelay) }
+        {
+          runAt: new Date(Date.now() + nextSyncDelay),
+          jobKey: `email:incremental_sync:${accountId}`
+        }
       );
     } else {
       console.log(
@@ -148,6 +121,7 @@ export const incrementalSyncHandler: Task = async (payload, helpers) => {
           {
             runAt: new Date(Date.now() + 60000), // Run 1 minute after sync
             priority: -1, // Lower priority than sync jobs
+            jobKey: `email:auto_delete:${accountId}`
           }
         );
         console.log(
@@ -156,6 +130,8 @@ export const incrementalSyncHandler: Task = async (payload, helpers) => {
       }
     }
 
+    // Explicitly return to signal successful completion
+    return;
   } catch (error) {
     console.error(
       `[incremental-sync] Incremental sync failed for account ${accountId}`,
@@ -165,19 +141,7 @@ export const incrementalSyncHandler: Task = async (payload, helpers) => {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     const isFinalAttempt = helpers.job.attempts >= helpers.job.max_attempts;
 
-    // DUAL WRITE: Update old sync job
-    if (syncJob) {
-      await db.syncJob.update({
-        where: { id: syncJob.id },
-        data: {
-          status: 'failed',
-          error: errorMessage,
-          completedAt: new Date(),
-        },
-      });
-    }
-
-    // DUAL WRITE: Record failure in new JobStatus
+    // Record failure in JobStatus
     await JobStatusService.recordFailure(accountId, 'sync', errorMessage, {
       attempt: helpers.job.attempts,
       maxAttempts: helpers.job.max_attempts,
@@ -189,7 +153,10 @@ export const incrementalSyncHandler: Task = async (payload, helpers) => {
       console.log(
         '[incremental-sync] History gap detected, scheduling full sync'
       );
-      await helpers.addJob('email:full_sync', { accountId }, { priority: 10 });
+      await helpers.addJob('email:full_sync', { accountId }, {
+        priority: 10,
+        jobKey: `email:full_sync:${accountId}`
+      });
       return;
     }
 
@@ -205,21 +172,16 @@ export const incrementalSyncHandler: Task = async (payload, helpers) => {
 };
 
 async function syncGmailIncremental(
-  account: EmailAccountWithSyncStatus
+  account: any
 ): Promise<JobResult> {
-  // DUAL READ: Try new structure first (_SYNC_STATE folder)
+  // Get history ID from _SYNC_STATE folder
   const syncFolder = await db.folder.findFirst({
     where: {
       accountId: account.id,
       path: '_SYNC_STATE',
     },
   });
-  let startHistoryId = syncFolder?.lastSyncId;
-
-  // DUAL READ: Fall back to old structure if needed
-  if (!startHistoryId) {
-    startHistoryId = account.syncStatus?.gmailHistoryId;
-  }
+  const startHistoryId = syncFolder?.lastSyncId;
 
   if (!startHistoryId) {
     console.log(
@@ -413,7 +375,7 @@ async function syncGmailIncremental(
 }
 
 async function syncImapIncremental(
-  account: EmailAccountWithSyncStatus,
+  account: any,
   storage: EmailStorage
 ): Promise<JobResult> {
   const client = new ImapClient(account);

@@ -37,7 +37,7 @@ export async function scheduleFullSync(
 
   return await utils.addJob('email:full_sync', jobPayload, {
     ...options,
-    jobKey: `full_sync:${accountId}`,
+    jobKey: `email:full_sync:${accountId}`,
     maxAttempts: 3,
   });
 }
@@ -56,7 +56,7 @@ export async function scheduleIncrementalSync(
 
   return await utils.addJob('email:incremental_sync', jobPayload, {
     ...options,
-    jobKey: `incremental_sync:${accountId}`,
+    jobKey: `email:incremental_sync:${accountId}`,
     maxAttempts: 5,
   });
 }
@@ -93,7 +93,7 @@ export async function scheduleFolderSync(
 
   return await utils.addJob('email:folder_sync', jobPayload, {
     ...options,
-    jobKey: `folder_sync:${accountId}:${folderId}`,
+    jobKey: `email:folder_sync:${accountId}:${folderId}`,
     maxAttempts: 3,
   });
 }
@@ -207,7 +207,7 @@ export async function scheduleMboxImport(
 
   return await utils.addJob('email:mbox_import', jobPayload, {
     ...options,
-    jobKey: `mbox_import:${accountId}`,
+    jobKey: `email:mbox_import:${accountId}`,
   });
 }
 

@@ -86,40 +86,35 @@ export class StatsDAO {
    */
   static findMostRecentSync(
     accounts: Array<{
-      syncStatus?: {
-        lastSyncAt?: Date | null;
-      } | null;
+      jobStatuses: Array<{
+        lastRunAt?: Date | null;
+      }>;
     }>
   ): Date | null {
-    const mostRecentSync = accounts
-      .filter(a => a.syncStatus?.lastSyncAt)
-      .sort((a, b) => {
-        const dateA = a.syncStatus?.lastSyncAt?.getTime() || 0;
-        const dateB = b.syncStatus?.lastSyncAt?.getTime() || 0;
-        return dateB - dateA;
-      })[0];
+    const allSyncDates = accounts
+      .flatMap(a => a.jobStatuses || [])
+      .map(js => js.lastRunAt)
+      .filter(Boolean) as Date[];
 
-    return mostRecentSync?.syncStatus?.lastSyncAt || null;
+    if (allSyncDates.length === 0) return null;
+
+    return allSyncDates.sort((a, b) => b.getTime() - a.getTime())[0];
   }
 
   /**
    * Determine overall sync status from multiple accounts
    */
-  static determineOverallSyncStatus(
-    accounts: Array<{
-      syncStatus?: {
-        syncStatus?: string | null;
-      } | null;
-    }>
-  ): 'idle' | 'syncing' | 'error' {
-    // Error if any account has error, syncing if any is syncing, else idle
-    const hasError = accounts.some(a => a.syncStatus?.syncStatus === 'error');
-    const isSyncing = accounts.some(
-      a => a.syncStatus?.syncStatus === 'syncing'
-    );
+  static async determineOverallSyncStatus(
+    accounts: Array<{ id: string }>
+  ): Promise<'idle' | 'syncing' | 'error'> {
+    const { JobStatusService } = await import('@/lib/services/job-status.service');
 
-    if (hasError) return 'error';
-    if (isSyncing) return 'syncing';
+    for (const account of accounts) {
+      const status = await JobStatusService.getCurrentStatus(account.id, 'sync');
+      if (status.status === 'running') return 'syncing';
+      if (status.status === 'error') return 'error';
+    }
+
     return 'idle';
   }
 
@@ -140,29 +135,32 @@ export class StatsDAO {
   /**
    * Format stats response for single account
    */
-  static formatSingleAccountStats(
+  static async formatSingleAccountStats(
     account: {
+      id: string;
       _count: { emails: number };
-      syncStatus?: {
-        lastSyncAt?: Date | null;
-        syncStatus?: string | null;
-      } | null;
+      jobStatuses: Array<{
+        lastRunAt?: Date | null;
+        success?: boolean;
+      }>;
     },
     stats: {
       storageStats: { _sum: { size: number | null } };
       unreadCount: number;
       attachmentCount: number;
     }
-  ): StatsData {
+  ): Promise<StatsData> {
+    const { JobStatusService } = await import('@/lib/services/job-status.service');
+    const status = await JobStatusService.getCurrentStatus(account.id, 'sync');
+
     return {
       totalEmails: account._count.emails,
       unreadEmails: stats.unreadCount,
       totalAttachments: stats.attachmentCount,
       storageUsed: stats.storageStats._sum.size || 0,
-      lastSyncAt: account.syncStatus?.lastSyncAt?.toISOString() || null,
-      syncStatus:
-        (account.syncStatus?.syncStatus as 'idle' | 'syncing' | 'error') ||
-        'idle',
+      lastSyncAt: status.lastRunAt?.toISOString() || null,
+      syncStatus: status.status === 'running' ? 'syncing' :
+                  status.status === 'error' ? 'error' : 'idle',
     };
   }
 

@@ -1,5 +1,5 @@
 import { Folder } from '@/types';
-import { EmailAccount, SyncStatus } from '@/types/email';
+import { EmailAccount } from '@/types/email';
 
 export interface SyncJobPayload {
   accountId: string;
@@ -21,7 +21,7 @@ export interface IncrementalSyncPayload extends SyncJobPayload {
 export interface FolderSyncPayload extends SyncJobPayload {
   folderId: string;
   folderPath: string;
-  lastImapUid?: string;
+  lastSyncId?: string;
 }
 
 export interface JobResult {
@@ -30,7 +30,7 @@ export interface JobResult {
   errors?: string[];
   nextSyncData?: {
     gmailHistoryId?: string;
-    lastImapUid?: string;
+    lastSyncId?: string;
   };
 }
 
@@ -38,6 +38,3 @@ export interface EmailAccountWithFolders extends EmailAccount {
   folders: Folder[];
 }
 
-export interface EmailAccountWithSyncStatus extends EmailAccount {
-  syncStatus: SyncStatus | null;
-}

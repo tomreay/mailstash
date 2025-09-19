@@ -13,7 +13,6 @@ export interface MboxImportPayload {
 export const mboxImportHandler: Task = async (payload, helpers) => {
   const { accountId, mboxFilePath } = payload as MboxImportPayload;
 
-  let syncJob = null;
   const parser = new MboxParser();
   const storage = new EmailStorage();
 
@@ -21,7 +20,6 @@ export const mboxImportHandler: Task = async (payload, helpers) => {
     `[mbox-import] Starting import for account ${accountId} from ${mboxFilePath}`
   );
 
-  // DUAL WRITE: Record job start in new JobStatus
   await JobStatusService.recordStart(accountId, 'mbox_import');
 
   // Check if file exists before proceeding
@@ -40,41 +38,7 @@ export const mboxImportHandler: Task = async (payload, helpers) => {
   console.log(`[mbox-import] File size: ${stats.size} bytes`);
 
   try {
-    // DUAL WRITE: Set old sync status to syncing immediately
-    await db.syncStatus.upsert({
-      where: { accountId },
-      create: {
-        accountId,
-        syncStatus: 'syncing',
-        lastSyncAt: null,
-        errorMessage: null,
-      },
-      update: {
-        syncStatus: 'syncing',
-        errorMessage: null,
-      },
-    });
-    console.log(
-      `[mbox-import] Set sync status to 'syncing' for account ${accountId}`
-    );
 
-    // DUAL WRITE: Create old sync job record
-    syncJob = await db.syncJob.create({
-      data: {
-        type: 'mbox_import',
-        status: 'processing',
-        accountId,
-        startedAt: new Date(),
-        emailsProcessed: 0,
-        metadata: {
-          mboxFilePath,
-          totalEstimated: 0,
-          processed: 0,
-          failed: 0,
-          errors: [],
-        },
-      },
-    });
 
     // Validate the mbox file
     const isValid = await parser.validate(mboxFilePath);
@@ -154,22 +118,9 @@ export const mboxImportHandler: Task = async (payload, helpers) => {
           );
         }
 
-        // Update progress every batch or every 5 seconds
+        // Log progress every batch or every 5 seconds
         const now = Date.now();
         if (processed % batchSize === 0 || now - lastProgressLog > 5000) {
-          await db.syncJob.update({
-            where: { id: syncJob.id },
-            data: {
-              emailsProcessed: processed,
-              metadata: {
-                ...(syncJob.metadata as Record<string, unknown>),
-                processed,
-                failed,
-                errors: errors.slice(-10), // Keep last 10 errors
-              },
-            },
-          });
-
           console.log(
             `[mbox-import] Progress: ${processed} emails - ${failed} failed`
           );
@@ -183,39 +134,8 @@ export const mboxImportHandler: Task = async (payload, helpers) => {
       }
     }
 
-    // DUAL WRITE: Final update to old sync job
-    await db.syncJob.update({
-      where: { id: syncJob.id },
-      data: {
-        status: 'completed',
-        completedAt: new Date(),
-        emailsProcessed: processed,
-        metadata: {
-          mboxFilePath,
-          processed,
-          failed,
-          errors: errors.slice(-10),
-          summary: `Successfully imported ${processed} emails, ${failed} failed`,
-        },
-      },
-    });
 
-    // DUAL WRITE: Update old sync status
-    await db.syncStatus.upsert({
-      where: { accountId },
-      update: {
-        syncStatus: 'idle',
-        lastSyncAt: new Date(),
-        errorMessage: null,
-      },
-      create: {
-        accountId,
-        syncStatus: 'idle',
-        lastSyncAt: new Date(),
-      },
-    });
 
-    // DUAL WRITE: Record success in new JobStatus
     await JobStatusService.recordSuccess(accountId, 'mbox_import', {
       processed,
       failed,
@@ -248,33 +168,8 @@ export const mboxImportHandler: Task = async (payload, helpers) => {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     const isFinalAttempt = helpers.job.attempts >= helpers.job.max_attempts;
 
-    // DUAL WRITE: Update old job status
-    if (syncJob) {
-      await db.syncJob.update({
-        where: { id: syncJob.id },
-        data: {
-          status: 'failed',
-          completedAt: new Date(),
-          error: errorMessage,
-        },
-      });
-    }
 
-    // DUAL WRITE: Update old sync status
-    await db.syncStatus.upsert({
-      where: { accountId },
-      update: {
-        syncStatus: 'error',
-        errorMessage: errorMessage,
-      },
-      create: {
-        accountId,
-        syncStatus: 'error',
-        errorMessage: errorMessage,
-      },
-    });
 
-    // DUAL WRITE: Record failure in new JobStatus
     await JobStatusService.recordFailure(accountId, 'mbox_import', errorMessage, {
       attempt: helpers.job.attempts,
       maxAttempts: helpers.job.max_attempts,

@@ -61,8 +61,7 @@ function buildDeleteWhereClause(
  */
 async function processAutoDelete(
   account: EmailAccount,
-  settings: EmailAccountSettings,
-  syncJobId: string
+  settings: EmailAccountSettings
 ) {
   console.log(
     `[AutoDelete] Starting auto-delete processing for account ${account.id}`
@@ -108,16 +107,6 @@ async function processAutoDelete(
 
   const now = new Date();
 
-  // Check if job has been cancelled
-  const jobStatus = await db.syncJob.findUnique({
-    where: { id: syncJobId },
-    select: { status: true },
-  });
-
-  if (jobStatus?.status === 'failed') {
-    console.log(`[AutoDelete] Job ${syncJobId} has been cancelled`);
-    return { success: false, error: 'Job cancelled' };
-  }
 
   // Count total emails that match criteria
   const totalCount = await db.email.count({
@@ -139,14 +128,6 @@ async function processAutoDelete(
     take: 100, // Process in batches
   });
 
-  // Update job progress
-  await db.syncJob.update({
-    where: { id: syncJobId },
-    data: {
-      emailsProcessed: Math.min(100, totalCount),
-      metadata: { totalEmails: totalCount },
-    },
-  });
 
   console.log(
     `[AutoDelete] Found ${emailsToProcess.length} emails to process for account ${account.id}`
@@ -185,19 +166,6 @@ async function processAutoDelete(
       );
     }
 
-    // Update job with final count
-    await db.syncJob.update({
-      where: { id: syncJobId },
-      data: {
-        status: 'completed',
-        completedAt: new Date(),
-        emailsProcessed: totalCount,
-        metadata: {
-          totalEmails: totalCount,
-          markedCount: emailIds.length,
-        },
-      },
-    });
 
     return { success: true, count: emailIds.length };
   } else if (settings.autoDeleteMode === 'on') {
@@ -278,7 +246,6 @@ async function processAutoDelete(
 export const autoDeleteHandler: Task = async (payload, helpers) => {
   const { accountId } = payload as AutoDeleteJobData;
 
-  // DUAL WRITE: Record job start in new JobStatus
   await JobStatusService.recordStart(accountId, 'auto_delete');
 
   // Get account settings
@@ -289,7 +256,6 @@ export const autoDeleteHandler: Task = async (payload, helpers) => {
 
   if (!account || !account.settings) {
     console.log(`[AutoDelete] No account or settings found for ${accountId}`);
-    // DUAL WRITE: Record skip in new JobStatus
     await JobStatusService.recordSuccess(accountId, 'auto_delete', {
       skipped: true,
       reason: 'No account or settings found',
@@ -302,51 +268,16 @@ export const autoDeleteHandler: Task = async (payload, helpers) => {
     autoDeleteMode: account.settings.autoDeleteMode as AutoDeleteMode,
   };
 
-  // Determine job type based on mode
-  const jobType =
-    settings.autoDeleteMode === 'dry-run'
-      ? 'auto_delete_dry_run'
-      : 'auto_delete';
-
-  // DUAL WRITE: Create old SyncJob record
-  const syncJob = await db.syncJob.create({
-    data: {
-      type: jobType,
-      status: 'processing',
-      accountId,
-      startedAt: new Date(),
-      emailsProcessed: 0,
-    },
-  });
-
   try {
-    // If this is a dry-run, update the currentDryRunJobId
-    if (settings.autoDeleteMode === 'dry-run') {
-      await db.emailAccountSettings.update({
-        where: { accountId },
-        data: { currentDryRunJobId: syncJob.id },
-      });
-    }
 
-    const result = await processAutoDelete(account, settings, syncJob.id);
+    const result = await processAutoDelete(account, settings);
 
     if (!result.success) {
-      // DUAL WRITE: Update old job status to failed
-      await db.syncJob.update({
-        where: { id: syncJob.id },
-        data: {
-          status: 'failed',
-          completedAt: new Date(),
-          error: result.error,
-        },
-      });
 
-      // DUAL WRITE: Record failure in new JobStatus
       await JobStatusService.recordFailure(accountId, 'auto_delete', result.error || 'Unknown error', {
         mode: settings.autoDeleteMode,
       });
     } else {
-      // DUAL WRITE: Record success in new JobStatus
       await JobStatusService.recordSuccess(accountId, 'auto_delete', {
         mode: settings.autoDeleteMode,
         count: result.count,
@@ -362,17 +293,7 @@ export const autoDeleteHandler: Task = async (payload, helpers) => {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     const isFinalAttempt = helpers.job.attempts >= helpers.job.max_attempts;
 
-    // DUAL WRITE: Update old job status to failed
-    await db.syncJob.update({
-      where: { id: syncJob.id },
-      data: {
-        status: 'failed',
-        completedAt: new Date(),
-        error: errorMessage,
-      },
-    });
 
-    // DUAL WRITE: Record failure in new JobStatus
     await JobStatusService.recordFailure(accountId, 'auto_delete', errorMessage, {
       attempt: helpers.job.attempts,
       maxAttempts: helpers.job.max_attempts,

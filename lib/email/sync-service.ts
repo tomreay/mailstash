@@ -3,6 +3,7 @@ import { ImapClient } from './imap-client';
 import { EmailStorage } from '@/lib/storage/email-storage';
 import { EmailAccount } from '@/types/email';
 import { db } from '@/lib/db';
+import { JobStatusService } from '@/lib/services/job-status.service';
 
 export class SyncService {
   private storage: EmailStorage;
@@ -14,18 +15,8 @@ export class SyncService {
   async syncAccount(accountId: string): Promise<void> {
     console.log(`Starting sync for account ${accountId}`);
 
-    // Update sync status
-    await db.syncStatus.upsert({
-      where: { accountId },
-      update: {
-        syncStatus: 'syncing',
-        errorMessage: null,
-      },
-      create: {
-        accountId,
-        syncStatus: 'syncing',
-      },
-    });
+    // Record sync start
+    await JobStatusService.recordStart(accountId, 'sync');
 
     try {
       const account = await db.emailAccount.findUnique({
@@ -44,29 +35,21 @@ export class SyncService {
         throw new Error(`Unsupported provider: ${account.provider}`);
       }
 
-      // Update sync status as successful
-      await db.syncStatus.update({
-        where: { accountId },
-        data: {
-          syncStatus: 'idle',
-          lastSyncAt: new Date(),
-          errorMessage: null,
-        },
+      // Record successful sync
+      await JobStatusService.recordSuccess(accountId, 'sync', {
+        fullSync: true,
       });
 
       console.log(`Sync completed for account ${accountId}`);
     } catch (error) {
       console.error(`Sync failed for account ${accountId}:`, error);
 
-      // Update sync status as failed
-      await db.syncStatus.update({
-        where: { accountId },
-        data: {
-          syncStatus: 'error',
-          errorMessage:
-            error instanceof Error ? error.message : 'Unknown error',
-        },
-      });
+      // Record sync failure
+      await JobStatusService.recordFailure(
+        accountId,
+        'sync',
+        error instanceof Error ? error.message : 'Unknown error'
+      );
 
       throw error;
     }
@@ -133,11 +116,22 @@ export class SyncService {
       pageToken = result.nextPageToken;
     } while (pageToken);
 
-    // Update sync status with history ID for future incremental syncs
-    await db.syncStatus.update({
-      where: { accountId: account.id },
-      data: {
-        gmailHistoryId: currentHistoryId,
+    // Store history ID in _SYNC_STATE folder for future incremental syncs
+    await db.folder.upsert({
+      where: {
+        accountId_path: {
+          accountId: account.id,
+          path: '_SYNC_STATE',
+        },
+      },
+      update: {
+        lastSyncId: currentHistoryId,
+      },
+      create: {
+        name: '_SYNC_STATE',
+        path: '_SYNC_STATE',
+        accountId: account.id,
+        lastSyncId: currentHistoryId,
       },
     });
 
@@ -185,15 +179,20 @@ export class SyncService {
 
         if (mailbox) {
           // Get last sync date for incremental sync
-          const lastSync = await db.syncStatus.findUnique({
-            where: { accountId: account.id },
-            select: { lastSyncAt: true },
+          const jobStatus = await db.jobStatus.findUnique({
+            where: {
+              accountId_jobType: {
+                accountId: account.id,
+                jobType: 'sync',
+              },
+            },
+            select: { lastRunAt: true },
           });
 
           const messages = await client.getMessages(
             mailbox.path,
             100,
-            lastSync?.lastSyncAt ||
+            jobStatus?.lastRunAt ||
               new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) // 30 days ago
           );
 

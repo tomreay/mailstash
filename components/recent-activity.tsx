@@ -8,6 +8,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { db } from '@/lib/db';
 import { auth } from '@/lib/auth';
+import { JobStatusService } from '@/lib/services/job-status.service';
 
 export async function RecentActivity() {
   const session = await auth();
@@ -28,18 +29,39 @@ export async function RecentActivity() {
 
   const accountIds = userAccounts.map(a => a.id);
 
-  // Fetch sync jobs
-  const syncJobs = await db.syncJob.findMany({
+  // Fetch job statuses
+  const jobStatuses = await db.jobStatus.findMany({
     where: {
       accountId: {
         in: accountIds,
       },
     },
     orderBy: {
-      startedAt: 'desc',
+      updatedAt: 'desc',
     },
     take: 5,
   });
+
+  // Transform to sync jobs format with running state
+  const syncJobs = await Promise.all(
+    jobStatuses.map(async (jobStatus) => {
+      const currentStatus = await JobStatusService.getCurrentStatus(
+        jobStatus.accountId,
+        jobStatus.jobType
+      );
+      const metadata = jobStatus.metadata as any || {};
+
+      return {
+        id: jobStatus.id,
+        type: jobStatus.jobType,
+        status: currentStatus.status === 'running' ? 'processing' :
+                jobStatus.success ? 'completed' : 'failed',
+        emailsProcessed: metadata.emailsProcessed || 0,
+        error: jobStatus.error,
+        startedAt: jobStatus.lastRunAt,
+      };
+    })
+  );
 
   // Get stats
   const accounts = await db.emailAccount.findMany({
@@ -47,7 +69,9 @@ export async function RecentActivity() {
       userId: session.user.id,
     },
     include: {
-      syncStatus: true,
+      jobStatuses: {
+        where: { jobType: 'sync' },
+      },
     },
   });
 
@@ -59,12 +83,24 @@ export async function RecentActivity() {
     },
   });
 
-  const lastSync = accounts
-    .map(a => a.syncStatus?.lastSyncAt)
+  // Check sync status for each account
+  const syncStatuses = await Promise.all(
+    accounts.map(async (account) => {
+      const status = await JobStatusService.getCurrentStatus(account.id, 'sync');
+      return {
+        accountId: account.id,
+        lastSyncAt: status.lastRunAt,
+        isSyncing: status.status === 'running',
+      };
+    })
+  );
+
+  const lastSync = syncStatuses
+    .map(s => s.lastSyncAt)
     .filter(Boolean)
     .sort((a, b) => b!.getTime() - a!.getTime())[0];
 
-  const anySyncing = accounts.some(a => a.syncStatus?.syncStatus === 'syncing');
+  const anySyncing = syncStatuses.some(s => s.isSyncing);
 
   return (
     <Card>

@@ -7,6 +7,7 @@ import {
   getActiveJobs,
 } from '@/lib/jobs/queue';
 import { SyncResponse } from '@/types';
+import { JobStatusService } from '@/lib/services/job-status.service';
 
 export async function POST(request: Request) {
   try {
@@ -43,14 +44,28 @@ export async function POST(request: Request) {
       );
     }
 
-    // Check if sync is already in progress by checking for active jobs
-    const syncStatus = await db.syncStatus.findUnique({
-      where: { accountId: account.id },
+    // Check job status to determine sync type
+    const jobStatus = await db.jobStatus.findUnique({
+      where: {
+        accountId_jobType: {
+          accountId: account.id,
+          jobType: 'sync',
+        },
+      },
     });
+
+    // Get Gmail history ID from _SYNC_STATE folder if needed
+    const syncFolder = account.provider === 'gmail' ?
+      await db.folder.findFirst({
+        where: {
+          accountId: account.id,
+          path: '_SYNC_STATE',
+        },
+      }) : null;
 
     // Schedule appropriate sync job based on sync history
     let job;
-    if (!syncStatus || !syncStatus.lastSyncAt) {
+    if (!jobStatus || !jobStatus.lastRunAt) {
       // First sync or no previous sync - schedule full sync
       job = await scheduleFullSync(account.id, {}, { priority: 10 });
     } else {
@@ -58,8 +73,8 @@ export async function POST(request: Request) {
       job = await scheduleIncrementalSync(
         account.id,
         {
-          lastSyncAt: syncStatus.lastSyncAt.toISOString(),
-          gmailHistoryId: syncStatus.gmailHistoryId || undefined,
+          lastSyncAt: jobStatus.lastRunAt.toISOString(),
+          gmailHistoryId: syncFolder?.lastSyncId || undefined,
         },
         { priority: 10 }
       );
@@ -95,9 +110,6 @@ export async function GET() {
         userId: session.user.id,
         isActive: true,
       },
-      include: {
-        syncStatus: true,
-      },
     });
 
     if (!account) {
@@ -109,22 +121,17 @@ export async function GET() {
       return NextResponse.json(response);
     }
 
-    // Check for active sync jobs
-    const activeJobs = await getActiveJobs();
-    const isSyncing = activeJobs.some(
-      job =>
-        job.payload?.accountId === account.id &&
-        (job.task_identifier === 'email:full_sync' ||
-          job.task_identifier === 'email:incremental_sync')
+    // Get current sync status from JobStatus
+    const currentStatus = await JobStatusService.getCurrentStatus(
+      account.id,
+      'sync'
     );
 
     const response: SyncResponse = {
-      status: isSyncing
-        ? 'syncing'
-        : (account.syncStatus?.syncStatus as 'idle' | 'syncing' | 'error') ||
-          'idle',
-      lastSyncAt: account.syncStatus?.lastSyncAt?.toISOString() || null,
-      error: account.syncStatus?.errorMessage || null,
+      status: currentStatus.status === 'running' ? 'syncing' :
+              currentStatus.status === 'error' ? 'error' : 'idle',
+      lastSyncAt: currentStatus.lastRunAt?.toISOString() || null,
+      error: currentStatus.error || null,
     };
 
     return NextResponse.json(response);

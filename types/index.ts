@@ -9,9 +9,9 @@ export interface Folder {
   path: string;
   accountId: string;
   gmailLabelId: string | null;
+  lastSyncId: string | null;
   createdAt: Date;
   updatedAt: Date;
-  lastImapUid: string | null;
 }
 
 export interface Email {
@@ -104,14 +104,4 @@ export interface SyncResponse {
   status?: 'idle' | 'syncing' | 'error';
   lastSyncAt?: string | null;
   error?: string | null;
-}
-
-export interface SyncJob {
-  id: string;
-  type: string;
-  status: string;
-  startedAt: Date | null;
-  completedAt: Date | null;
-  error: string | null;
-  emailsProcessed: number;
 }

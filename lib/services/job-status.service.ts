@@ -184,7 +184,7 @@ export class JobStatusService {
   }
 
   /**
-   * Get active job from graphile-worker
+   * Get active job from graphile-worker using job keys
    */
   private static async getActiveGraphileJob(accountId: string, jobType: string): Promise<{
     attempts: number;
@@ -192,8 +192,8 @@ export class JobStatusService {
   } | null> {
     const utils = await getWorkerUtils();
 
-    // Map our jobType to graphile task identifiers
-    const taskIdentifiers = this.getTaskIdentifiers(jobType);
+    // Generate job keys for this account and job type
+    const jobKeys = this.getJobKeys(accountId, jobType);
 
     // Type for the PgClient from graphile-worker
     interface PgClient {
@@ -204,7 +204,7 @@ export class JobStatusService {
     interface GraphileJob {
       attempts: number;
       max_attempts: number;
-      payload: { accountId: string };
+      key: string;
       [key: string]: unknown;
     }
 
@@ -213,19 +213,29 @@ export class JobStatusService {
         `
         SELECT j.*
         FROM graphile_worker.jobs j
-        WHERE j.payload->>'accountId' = $1
-          AND j.task_identifier = ANY($2::text[])
+        WHERE j.key = ANY($1::text[])
           AND (j.locked_at IS NOT NULL OR j.run_at > NOW())
         ORDER BY j.created_at DESC
         LIMIT 1
       `,
-        [accountId, taskIdentifiers]
+        [jobKeys]
       );
 
       return rows[0] as GraphileJob | undefined;
     });
 
     return job || null;
+  }
+
+  /**
+   * Generate job keys for the account and job type
+   * Job keys prevent duplicate jobs from being scheduled
+   */
+  private static getJobKeys(accountId: string, jobType: string): string[] {
+    // Different job types can have different task identifiers
+    // but they all use the same key format: {taskIdentifier}:{accountId}
+    const taskIdentifiers = this.getTaskIdentifiers(jobType);
+    return taskIdentifiers.map(taskId => `${taskId}:${accountId}`);
   }
 
   /**

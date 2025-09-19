@@ -5,6 +5,7 @@ import {
   UpdateEmailAccountSettings,
   AutoDeleteMode,
 } from '@/lib/types/account-settings';
+import { JobStatusService } from '@/lib/services/job-status.service';
 
 export interface CreateAccountData {
   email: string;
@@ -67,8 +68,10 @@ export class AccountsDAO {
         userId,
       },
       include: {
-        syncStatus: true,
         settings: true,
+        jobStatuses: {
+          where: { jobType: 'sync' },
+        },
         _count: {
           select: {
             emails: true,
@@ -81,13 +84,20 @@ export class AccountsDAO {
       },
     });
 
-    // Calculate storage used per account
+    // Calculate storage used per account and get sync status
     return await Promise.all(
       accounts.map(async account => {
         const storageStats = await db.email.aggregate({
           where: { accountId: account.id },
           _sum: { size: true },
         });
+
+        // Get sync status from JobStatus
+        const syncJobStatus = account.jobStatuses[0];
+        const currentStatus = await JobStatusService.getCurrentStatus(
+          account.id,
+          'sync'
+        );
 
         return {
           id: account.id,
@@ -98,8 +108,9 @@ export class AccountsDAO {
           emailCount: account._count.emails,
           folderCount: account._count.folders,
           storageUsed: storageStats._sum.size || 0,
-          lastSyncAt: account.syncStatus?.lastSyncAt?.toISOString() || null,
-          syncStatus: account.syncStatus?.syncStatus || 'idle',
+          lastSyncAt: syncJobStatus?.lastRunAt?.toISOString() || null,
+          syncStatus: currentStatus.status === 'running' ? 'syncing' :
+                     currentStatus.status === 'error' ? 'error' : 'idle',
           settings: account.settings
             ? {
                 syncFrequency: account.settings.syncFrequency,
@@ -130,7 +141,6 @@ export class AccountsDAO {
     return await db.emailAccount.create({
       data: accountData,
       include: {
-        syncStatus: true,
         settings: true,
       },
     });
@@ -147,17 +157,6 @@ export class AccountsDAO {
     });
   }
 
-  /**
-   * Create sync status for an account
-   */
-  static async createSyncStatus(accountId: string) {
-    return await db.syncStatus.create({
-      data: {
-        accountId,
-        syncStatus: 'idle',
-      },
-    });
-  }
 
   /**
    * Find account by ID and user ID with detailed stats
@@ -172,8 +171,10 @@ export class AccountsDAO {
         userId,
       },
       include: {
-        syncStatus: true,
         settings: true,
+        jobStatuses: {
+          where: { jobType: 'sync' },
+        },
         _count: {
           select: {
             emails: true,
@@ -188,11 +189,17 @@ export class AccountsDAO {
       return null;
     }
 
-    // Get storage stats
+    // Get storage stats and sync status
     const storageStats = await db.email.aggregate({
       where: { accountId: account.id },
       _sum: { size: true },
     });
+
+    const syncJobStatus = account.jobStatuses[0];
+    const currentStatus = await JobStatusService.getCurrentStatus(
+      account.id,
+      'sync'
+    );
 
     return {
       id: account.id,
@@ -204,8 +211,9 @@ export class AccountsDAO {
       folderCount: account._count.folders,
       filterRuleCount: account._count.filterRules,
       storageUsed: storageStats._sum.size || 0,
-      lastSyncAt: account.syncStatus?.lastSyncAt?.toISOString() || null,
-      syncStatus: account.syncStatus?.syncStatus || 'idle',
+      lastSyncAt: syncJobStatus?.lastRunAt?.toISOString() || null,
+      syncStatus: currentStatus.status === 'running' ? 'syncing' :
+                 currentStatus.status === 'error' ? 'error' : 'idle',
       settings: account.settings as EmailAccountSettings | null,
       createdAt: account.createdAt.toISOString(),
       updatedAt: account.updatedAt.toISOString(),
@@ -248,9 +256,9 @@ export class AccountsDAO {
   }
 
   /**
-   * Find user's accounts with sync status for stats aggregation
+   * Find user's accounts with job status for stats aggregation
    */
-  static async findAccountsWithSyncStatus(userId: string, accountId?: string) {
+  static async findAccountsWithJobStatus(userId: string, accountId?: string) {
     return await db.emailAccount.findMany({
       where: {
         userId,
@@ -258,7 +266,9 @@ export class AccountsDAO {
         ...(accountId ? { id: accountId } : {}),
       },
       include: {
-        syncStatus: true,
+        jobStatuses: {
+          where: { jobType: 'sync' },
+        },
         _count: {
           select: {
             emails: true,

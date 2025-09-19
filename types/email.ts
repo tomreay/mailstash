@@ -58,11 +58,3 @@ export interface EmailFolder {
   accountId: string;
   gmailLabelId?: string;
 }
-
-export interface SyncStatus {
-  accountId: string;
-  lastSyncAt: Date | null;
-  syncStatus: string;
-  errorMessage: string | null;
-  gmailHistoryId: string | null;
-}

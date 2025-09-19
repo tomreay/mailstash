@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
+import { JobStatusService } from '@/lib/services/job-status.service';
 
 export async function GET(request: NextRequest) {
   try {
@@ -25,27 +26,36 @@ export async function GET(request: NextRequest) {
 
     const accountIds = accounts.map(a => a.id);
 
-    // Get recent sync jobs
-    const searchParams = request.nextUrl.searchParams;
-    const limit = parseInt(searchParams.get('limit') || '10', 10);
-    const syncJobs = await db.syncJob.findMany({
+    // Get job statuses for all accounts
+    const jobStatuses = await db.jobStatus.findMany({
       where: {
         accountId: { in: accountIds },
       },
-      orderBy: [{ startedAt: 'desc' }, { createdAt: 'desc' }],
-      take: limit,
-      select: {
-        id: true,
-        type: true,
-        status: true,
-        accountId: true,
-        emailsProcessed: true,
-        startedAt: true,
-        completedAt: true,
-        error: true,
-        createdAt: true,
-      },
+      orderBy: { updatedAt: 'desc' },
     });
+
+    // Get current status for each job including running state
+    const syncJobs = await Promise.all(
+      jobStatuses.map(async (jobStatus) => {
+        const currentStatus = await JobStatusService.getCurrentStatus(
+          jobStatus.accountId,
+          jobStatus.jobType
+        );
+
+        return {
+          id: jobStatus.id,
+          type: jobStatus.jobType,
+          status: currentStatus.status === 'running' ? 'processing' :
+                  jobStatus.success ? 'completed' : 'failed',
+          accountId: jobStatus.accountId,
+          emailsProcessed: (jobStatus.metadata as any)?.emailsProcessed || 0,
+          startedAt: jobStatus.lastRunAt,
+          completedAt: jobStatus.lastRunAt,
+          error: jobStatus.error,
+          createdAt: jobStatus.updatedAt,
+        };
+      })
+    );
 
     return NextResponse.json({ syncJobs });
   } catch (error) {
