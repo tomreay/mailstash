@@ -8,7 +8,7 @@ import type { MboxImportPayload } from './handlers/mbox-import';
 
 let workerUtils: WorkerUtils | null = null;
 
-async function getWorkerUtils(): Promise<WorkerUtils> {
+export async function getWorkerUtils(): Promise<WorkerUtils> {
   if (!workerUtils) {
     const connectionString = process.env.DATABASE_URL;
     if (!connectionString) {

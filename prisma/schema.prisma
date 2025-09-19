@@ -39,6 +39,7 @@ model EmailAccount {
   syncStatus  SyncStatus?
   filterRules FilterRule[]
   settings    EmailAccountSettings?
+  jobStatuses JobStatus[]
   
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -59,7 +60,8 @@ model Folder {
   
   // IMAP-specific fields
   lastImapUid  String?  // Track highest UID for incremental sync
-  
+  lastSyncId  String?  // IMAP: last UID, Gmail: historyId (only for _SYNC_STATE)
+
   emails      Email[]
   
   createdAt   DateTime @default(now())
@@ -188,6 +190,28 @@ model SyncJob {
   @@index([status, scheduledAt])
   @@index([accountId, type, createdAt])
   @@map("sync_jobs")
+}
+
+// New simplified job tracking table
+model JobStatus {
+  id          String   @id @default(cuid())
+  accountId   String
+  account     EmailAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  jobType     String   // "sync", "auto_delete", "mbox_import"
+
+  // Simple execution tracking
+  lastRunAt   DateTime?
+  success     Boolean  @default(false)
+  error       String?  @db.Text
+
+  // Optional metadata for UI display
+  metadata    Json?    // { emailsProcessed: 150, duration: 5000, etc. }
+
+  updatedAt   DateTime @updatedAt
+
+  @@unique([accountId, jobType])
+  @@index([accountId])
+  @@map("job_status")
 }
 
 model FilterRule {

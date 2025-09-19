@@ -3,6 +3,7 @@ import { FullSyncPayload, JobResult } from '../types';
 import { syncService } from '@/lib/email/sync-service';
 import { db } from '@/lib/db';
 import { SyncJob } from '@/types';
+import { JobStatusService } from '@/lib/services/job-status.service';
 
 export const fullSyncHandler: Task = async (payload, helpers) => {
   let syncJob: SyncJob | null = null;
@@ -11,7 +12,7 @@ export const fullSyncHandler: Task = async (payload, helpers) => {
   console.log(`[full-sync] Starting full sync for account ${accountId}`);
 
   try {
-    // Create sync job record
+    // DUAL WRITE: Create old sync job record
     syncJob = await db.syncJob.create({
       data: {
         type: 'full_sync',
@@ -21,6 +22,9 @@ export const fullSyncHandler: Task = async (payload, helpers) => {
         emailsProcessed: 0,
       },
     });
+
+    // DUAL WRITE: Record job start in new JobStatus
+    await JobStatusService.recordStart(accountId, 'sync');
     // Check if account exists and is active
     const account = await db.emailAccount.findUnique({
       where: { id: accountId },
@@ -35,10 +39,15 @@ export const fullSyncHandler: Task = async (payload, helpers) => {
       console.log(
         `[full-sync] Account ${accountId} is not active, skipping sync`
       );
+      // DUAL WRITE: Record skip in new JobStatus
+      await JobStatusService.recordSuccess(accountId, 'sync', {
+        skipped: true,
+        reason: 'Account inactive',
+      });
       return;
     }
 
-    // Update sync status to syncing
+    // DUAL WRITE: Update old sync status to syncing
     await db.syncStatus.upsert({
       where: { accountId },
       update: {
@@ -68,7 +77,7 @@ export const fullSyncHandler: Task = async (payload, helpers) => {
       where: { accountId },
     });
 
-    // Update job status to completed
+    // DUAL WRITE: Update old sync job to completed
     await db.syncJob.update({
       where: { id: syncJob.id },
       data: {
@@ -76,6 +85,13 @@ export const fullSyncHandler: Task = async (payload, helpers) => {
         completedAt: new Date(),
         emailsProcessed: emailCount,
       },
+    });
+
+    // DUAL WRITE: Record successful completion in new JobStatus
+    await JobStatusService.recordSuccess(accountId, 'sync', {
+      emailsProcessed: emailCount,
+      provider: account.provider,
+      fullSync: true,
     });
 
     // Log completion
@@ -97,7 +113,7 @@ export const fullSyncHandler: Task = async (payload, helpers) => {
       select: { gmailHistoryId: true },
     });
 
-    // Update sync status to idle
+    // DUAL WRITE: Update old sync status to idle
     await db.syncStatus.update({
       where: { accountId },
       data: {
@@ -123,34 +139,45 @@ export const fullSyncHandler: Task = async (payload, helpers) => {
       error
     );
 
-    // Update job status to failed
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const isFinalAttempt = helpers.job.attempts >= helpers.job.max_attempts;
+
+    // DUAL WRITE: Update old sync job to failed
     if (syncJob) {
       await db.syncJob.update({
         where: { id: syncJob.id },
         data: {
           status: 'failed',
-          error: error instanceof Error ? error.message : 'Unknown error',
+          error: errorMessage,
           completedAt: new Date(),
         },
       });
     }
+
+    // DUAL WRITE: Record failure in new JobStatus
+    await JobStatusService.recordFailure(accountId, 'sync', errorMessage, {
+      attempt: helpers.job.attempts,
+      maxAttempts: helpers.job.max_attempts,
+      isFinal: isFinalAttempt,
+      fullSync: true,
+    });
 
     // If this is a transient error, let graphile-worker retry
     if (error instanceof Error && isTransientError(error)) {
       throw error;
     }
 
-    // For permanent errors, update account status and don't retry
+    // DUAL WRITE: For permanent errors, update old sync status and don't retry
     await db.syncStatus.upsert({
       where: { accountId },
       update: {
         syncStatus: 'error',
-        errorMessage: error instanceof Error ? error.message : 'Unknown error',
+        errorMessage: errorMessage,
       },
       create: {
         accountId,
         syncStatus: 'error',
-        errorMessage: error instanceof Error ? error.message : 'Unknown error',
+        errorMessage: errorMessage,
       },
     });
 

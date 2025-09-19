@@ -3,13 +3,14 @@ import { promises as fs } from 'fs';
 import { MboxParser } from '@/lib/email/parsers/mbox-parser';
 import { EmailStorage } from '@/lib/storage/email-storage';
 import { db } from '@/lib/db';
+import { JobStatusService } from '@/lib/services/job-status.service';
 
 export interface MboxImportPayload {
   accountId: string;
   mboxFilePath: string;
 }
 
-export const mboxImportHandler: Task = async payload => {
+export const mboxImportHandler: Task = async (payload, helpers) => {
   const { accountId, mboxFilePath } = payload as MboxImportPayload;
 
   let syncJob = null;
@@ -19,6 +20,9 @@ export const mboxImportHandler: Task = async payload => {
   console.log(
     `[mbox-import] Starting import for account ${accountId} from ${mboxFilePath}`
   );
+
+  // DUAL WRITE: Record job start in new JobStatus
+  await JobStatusService.recordStart(accountId, 'mbox_import');
 
   // Check if file exists before proceeding
   const fileExists = await fs
@@ -36,7 +40,7 @@ export const mboxImportHandler: Task = async payload => {
   console.log(`[mbox-import] File size: ${stats.size} bytes`);
 
   try {
-    // Set sync status to syncing immediately
+    // DUAL WRITE: Set old sync status to syncing immediately
     await db.syncStatus.upsert({
       where: { accountId },
       create: {
@@ -54,7 +58,7 @@ export const mboxImportHandler: Task = async payload => {
       `[mbox-import] Set sync status to 'syncing' for account ${accountId}`
     );
 
-    // Create sync job record
+    // DUAL WRITE: Create old sync job record
     syncJob = await db.syncJob.create({
       data: {
         type: 'mbox_import',
@@ -179,7 +183,7 @@ export const mboxImportHandler: Task = async payload => {
       }
     }
 
-    // Final update
+    // DUAL WRITE: Final update to old sync job
     await db.syncJob.update({
       where: { id: syncJob.id },
       data: {
@@ -196,7 +200,7 @@ export const mboxImportHandler: Task = async payload => {
       },
     });
 
-    // Update sync status
+    // DUAL WRITE: Update old sync status
     await db.syncStatus.upsert({
       where: { accountId },
       update: {
@@ -209,6 +213,14 @@ export const mboxImportHandler: Task = async payload => {
         syncStatus: 'idle',
         lastSyncAt: new Date(),
       },
+    });
+
+    // DUAL WRITE: Record success in new JobStatus
+    await JobStatusService.recordSuccess(accountId, 'mbox_import', {
+      processed,
+      failed,
+      mboxFilePath,
+      fileSize: stats.size,
     });
 
     console.log(
@@ -233,30 +245,42 @@ export const mboxImportHandler: Task = async payload => {
   } catch (error) {
     console.error(`[mbox-import] Import failed:`, error);
 
-    // Update job status
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const isFinalAttempt = helpers.job.attempts >= helpers.job.max_attempts;
+
+    // DUAL WRITE: Update old job status
     if (syncJob) {
       await db.syncJob.update({
         where: { id: syncJob.id },
         data: {
           status: 'failed',
           completedAt: new Date(),
-          error: error instanceof Error ? error.message : 'Unknown error',
+          error: errorMessage,
         },
       });
     }
 
-    // Update sync status
+    // DUAL WRITE: Update old sync status
     await db.syncStatus.upsert({
       where: { accountId },
       update: {
         syncStatus: 'error',
-        errorMessage: error instanceof Error ? error.message : 'Import failed',
+        errorMessage: errorMessage,
       },
       create: {
         accountId,
         syncStatus: 'error',
-        errorMessage: error instanceof Error ? error.message : 'Import failed',
+        errorMessage: errorMessage,
       },
+    });
+
+    // DUAL WRITE: Record failure in new JobStatus
+    await JobStatusService.recordFailure(accountId, 'mbox_import', errorMessage, {
+      attempt: helpers.job.attempts,
+      maxAttempts: helpers.job.max_attempts,
+      isFinal: isFinalAttempt,
+      mboxFilePath,
+      fileSize: stats.size,
     });
 
     // DO NOT delete the file on error - keep it for debugging and retry

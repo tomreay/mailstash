@@ -8,25 +8,20 @@ import { ImapClient } from '@/lib/email/imap-client';
 import { GmailClient } from '@/lib/email/gmail-client';
 import { EmailStorage } from '@/lib/storage/email-storage';
 import { db } from '@/lib/db';
+import { JobStatusService } from '@/lib/services/job-status.service';
 import { SyncJob } from '@/types';
 import parser from 'cron-parser';
 
 export const incrementalSyncHandler: Task = async (payload, helpers) => {
   let syncJob: SyncJob | null = null;
-  const { accountId, lastSyncAt, gmailHistoryId, imapUidValidity } =
-    payload as IncrementalSyncPayload;
+  const { accountId } = payload as IncrementalSyncPayload;
 
   console.log(
-    `[incremental-sync] Starting incremental sync for account ${accountId}`,
-    {
-      lastSyncAt,
-      gmailHistoryId,
-      imapUidValidity,
-    }
+    `[incremental-sync] Starting incremental sync for account ${accountId}`
   );
 
   try {
-    // Create sync job record
+    // DUAL WRITE: Create old sync job record
     syncJob = await db.syncJob.create({
       data: {
         type: 'incremental_sync',
@@ -35,11 +30,15 @@ export const incrementalSyncHandler: Task = async (payload, helpers) => {
         startedAt: new Date(),
       },
     });
-    const account: EmailAccountWithSyncStatus | null =
-      await db.emailAccount.findUnique({
-        where: { id: accountId },
-        include: { syncStatus: true },
-      });
+
+    // DUAL WRITE: Record job start in new JobStatus
+    await JobStatusService.recordStart(accountId, 'sync');
+    const account = await db.emailAccount.findUnique({
+      where: { id: accountId },
+      include: {
+        syncStatus: true,  // Include for old structure
+      },
+    });
 
     if (!account) {
       throw new Error(`Account ${accountId} not found`);
@@ -49,6 +48,10 @@ export const incrementalSyncHandler: Task = async (payload, helpers) => {
       console.log(
         `[incremental-sync] Account ${accountId} is not active, skipping sync`
       );
+      await JobStatusService.recordSuccess(accountId, 'sync', {
+        skipped: true,
+        reason: 'Account inactive',
+      });
       return;
     }
 
@@ -63,27 +66,39 @@ export const incrementalSyncHandler: Task = async (payload, helpers) => {
       throw new Error(`Unsupported provider: ${account.provider}`);
     }
 
-    // Update sync status
-    await db.syncStatus.update({
+    // DUAL WRITE: Update old sync status
+    await db.syncStatus.upsert({
       where: { accountId },
-      data: {
+      update: {
         syncStatus: 'idle',
         lastSyncAt: new Date(),
         errorMessage: null,
-        gmailHistoryId:
-          result.nextSyncData?.gmailHistoryId ||
-          account.syncStatus?.gmailHistoryId,
+        gmailHistoryId: result.nextSyncData?.gmailHistoryId,
+      },
+      create: {
+        accountId,
+        syncStatus: 'idle',
+        lastSyncAt: new Date(),
+        gmailHistoryId: result.nextSyncData?.gmailHistoryId,
       },
     });
 
-    // Update job status to completed
-    await db.syncJob.update({
-      where: { id: syncJob.id },
-      data: {
-        status: 'completed',
-        completedAt: new Date(),
-        emailsProcessed: result.emailsProcessed || 0,
-      },
+    // DUAL WRITE: Update old sync job
+    if (syncJob) {
+      await db.syncJob.update({
+        where: { id: syncJob.id },
+        data: {
+          status: 'completed',
+          completedAt: new Date(),
+          emailsProcessed: result.emailsProcessed || 0,
+        },
+      });
+    }
+
+    // DUAL WRITE: Record successful completion in new JobStatus
+    await JobStatusService.recordSuccess(accountId, 'sync', {
+      emailsProcessed: result.emailsProcessed || 0,
+      provider: account.provider,
     });
 
     console.log(
@@ -96,23 +111,21 @@ export const incrementalSyncHandler: Task = async (payload, helpers) => {
       where: { accountId },
     });
 
-    if (accountSettings === null) {
-        throw new Error('[incremental-sync] Account settings not found');
+    if (!accountSettings) {
+      console.log(
+        `[incremental-sync] No settings found for account ${accountId}, using defaults`
+      );
     }
 
     // Only schedule next sync if not paused and not manual
-    if (!accountSettings?.syncPaused && accountSettings?.syncFrequency !== 'manual') {
+    if (accountSettings && !accountSettings.syncPaused && accountSettings.syncFrequency !== 'manual') {
       const nextSyncDelay = getNextSyncDelay(
         result.emailsProcessed || 0,
         accountSettings.syncFrequency
       );
       await helpers.addJob(
         'email:incremental_sync',
-        {
-          accountId,
-          gmailHistoryId: result.nextSyncData?.gmailHistoryId,
-          lastSyncAt: new Date().toISOString(),
-        },
+        { accountId },
         { runAt: new Date(Date.now() + nextSyncDelay) }
       );
     } else {
@@ -122,7 +135,7 @@ export const incrementalSyncHandler: Task = async (payload, helpers) => {
     }
 
     // Schedule auto-delete processing if enabled (reuse accountSettings from above)
-    if (accountSettings.autoDeleteMode && accountSettings.autoDeleteMode !== 'off') {
+    if (accountSettings?.autoDeleteMode && accountSettings.autoDeleteMode !== 'off') {
       // Fetch autoDeleteMode if not already fetched
       const settings = await db.emailAccountSettings.findUnique({
         where: { accountId },
@@ -149,17 +162,27 @@ export const incrementalSyncHandler: Task = async (payload, helpers) => {
       error
     );
 
-    // Update job status to failed
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const isFinalAttempt = helpers.job.attempts >= helpers.job.max_attempts;
+
+    // DUAL WRITE: Update old sync job
     if (syncJob) {
       await db.syncJob.update({
         where: { id: syncJob.id },
         data: {
           status: 'failed',
-          error: error instanceof Error ? error.message : 'Unknown error',
+          error: errorMessage,
           completedAt: new Date(),
         },
       });
     }
+
+    // DUAL WRITE: Record failure in new JobStatus
+    await JobStatusService.recordFailure(accountId, 'sync', errorMessage, {
+      attempt: helpers.job.attempts,
+      maxAttempts: helpers.job.max_attempts,
+      isFinal: isFinalAttempt,
+    });
 
     // Check if it's a history gap error (Gmail specific)
     if (error instanceof Error && error.message.includes('history')) {
@@ -170,6 +193,12 @@ export const incrementalSyncHandler: Task = async (payload, helpers) => {
       return;
     }
 
+    if (isFinalAttempt) {
+      console.log(
+        `[incremental-sync] Final attempt failed for account ${accountId}, sync disabled until manual intervention`
+      );
+    }
+
     // Let graphile-worker handle retries for transient errors
     throw error;
   }
@@ -178,7 +207,19 @@ export const incrementalSyncHandler: Task = async (payload, helpers) => {
 async function syncGmailIncremental(
   account: EmailAccountWithSyncStatus
 ): Promise<JobResult> {
-  const startHistoryId = account.syncStatus?.gmailHistoryId;
+  // DUAL READ: Try new structure first (_SYNC_STATE folder)
+  const syncFolder = await db.folder.findFirst({
+    where: {
+      accountId: account.id,
+      path: '_SYNC_STATE',
+    },
+  });
+  let startHistoryId = syncFolder?.lastSyncId;
+
+  // DUAL READ: Fall back to old structure if needed
+  if (!startHistoryId) {
+    startHistoryId = account.syncStatus?.gmailHistoryId;
+  }
 
   if (!startHistoryId) {
     console.log(
@@ -329,11 +370,29 @@ async function syncGmailIncremental(
       }
     }
 
+    // DUAL WRITE: Update new structure (_SYNC_STATE folder)
+    if (syncFolder) {
+      await db.folder.update({
+        where: { id: syncFolder.id },
+        data: { lastSyncId: newHistoryId },
+      });
+    } else {
+      // Create _SYNC_STATE folder if it doesn't exist
+      await db.folder.create({
+        data: {
+          accountId: account.id,
+          name: '_SYNC_STATE',
+          path: '_SYNC_STATE',
+          lastSyncId: newHistoryId,
+        },
+      });
+    }
+
     return {
       success: true,
       emailsProcessed,
       nextSyncData: {
-        gmailHistoryId: newHistoryId,
+        gmailHistoryId: newHistoryId,  // For old structure
       },
     };
   } catch (error) {
@@ -354,8 +413,7 @@ async function syncGmailIncremental(
 }
 
 async function syncImapIncremental(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  account: any,
+  account: EmailAccountWithSyncStatus,
   storage: EmailStorage
 ): Promise<JobResult> {
   const client = new ImapClient(account);
@@ -364,28 +422,27 @@ async function syncImapIncremental(
   try {
     await client.connect();
 
-    // Sync important folders
-    const foldersToSync = ['INBOX', 'Sent', 'Drafts'];
-
-    for (const folderName of foldersToSync) {
-      const folder = await db.folder.findFirst({
-        where: {
-          accountId: account.id,
-          path: { contains: folderName, mode: 'insensitive' },
+    // Get IMAP folders from the database
+    const folders = await db.folder.findMany({
+      where: {
+        accountId: account.id,
+        NOT: {
+          path: '_SYNC_STATE',
         },
-      });
+      },
+    });
+
+    for (const folder of folders) {
 
       if (!folder) continue;
 
       console.log(`[incremental-sync] Syncing IMAP folder ${folder.path}`);
 
-      // Use a combination of UID and date-based sync for efficiency
-      const lastSyncDate =
-        account.syncStatus?.lastSyncAt ||
-        new Date(Date.now() - 7 * 24 * 60 * 60 * 1000); // 7 days ago
+      // Use last UID if available, otherwise use date-based sync
+      const lastSyncDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000); // 7 days ago as fallback
 
-      // Get messages since last sync date
-      const messages = await client.getMessages(folder.path, 500, lastSyncDate); // Increased limit for incremental
+      // Get messages since last sync (by UID if available)
+      const messages = await client.getMessages(folder.path, 500, lastSyncDate); // TODO: Use lastUid when IMAP client supports it
 
       console.log(
         `[incremental-sync] Found ${messages.length} messages in ${folder.path} since ${lastSyncDate.toISOString()}`
@@ -438,15 +495,17 @@ async function syncImapIncremental(
         }
       }
 
-      // Update folder's last UID for future reference
-      const lastUid =
+      // DUAL WRITE: Update new field
+      const newLastUid =
         messages.length > 0
           ? messages[messages.length - 1].id
-          : folder.lastImapUid;
-      if (lastUid) {
+          : folder.lastSyncId;
+      if (newLastUid) {
         await db.folder.update({
           where: { id: folder.id },
-          data: { lastImapUid: lastUid },
+          data: {
+            lastSyncId: newLastUid,    // New field
+          },
         });
       }
     }

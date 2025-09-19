@@ -7,6 +7,7 @@ import {
   EmailAccountSettings,
 } from '@/lib/types/account-settings';
 import { Task } from 'graphile-worker';
+import { JobStatusService } from '@/lib/services/job-status.service';
 
 export interface AutoDeleteJobData {
   accountId: string;
@@ -274,8 +275,11 @@ async function processAutoDelete(
 /**
  * Main auto-delete job handler for graphile-worker
  */
-export const autoDeleteHandler: Task = async payload => {
+export const autoDeleteHandler: Task = async (payload, helpers) => {
   const { accountId } = payload as AutoDeleteJobData;
+
+  // DUAL WRITE: Record job start in new JobStatus
+  await JobStatusService.recordStart(accountId, 'auto_delete');
 
   // Get account settings
   const account = await db.emailAccount.findUnique({
@@ -285,6 +289,11 @@ export const autoDeleteHandler: Task = async payload => {
 
   if (!account || !account.settings) {
     console.log(`[AutoDelete] No account or settings found for ${accountId}`);
+    // DUAL WRITE: Record skip in new JobStatus
+    await JobStatusService.recordSuccess(accountId, 'auto_delete', {
+      skipped: true,
+      reason: 'No account or settings found',
+    });
     return;
   }
 
@@ -299,7 +308,7 @@ export const autoDeleteHandler: Task = async payload => {
       ? 'auto_delete_dry_run'
       : 'auto_delete';
 
-  // Create SyncJob record
+  // DUAL WRITE: Create old SyncJob record
   const syncJob = await db.syncJob.create({
     data: {
       type: jobType,
@@ -322,7 +331,7 @@ export const autoDeleteHandler: Task = async payload => {
     const result = await processAutoDelete(account, settings, syncJob.id);
 
     if (!result.success) {
-      // Update job status to failed
+      // DUAL WRITE: Update old job status to failed
       await db.syncJob.update({
         where: { id: syncJob.id },
         data: {
@@ -330,6 +339,17 @@ export const autoDeleteHandler: Task = async payload => {
           completedAt: new Date(),
           error: result.error,
         },
+      });
+
+      // DUAL WRITE: Record failure in new JobStatus
+      await JobStatusService.recordFailure(accountId, 'auto_delete', result.error || 'Unknown error', {
+        mode: settings.autoDeleteMode,
+      });
+    } else {
+      // DUAL WRITE: Record success in new JobStatus
+      await JobStatusService.recordSuccess(accountId, 'auto_delete', {
+        mode: settings.autoDeleteMode,
+        count: result.count,
       });
     }
 
@@ -339,20 +359,28 @@ export const autoDeleteHandler: Task = async payload => {
   } catch (error) {
     console.error('[AutoDelete] Error processing auto-delete:', error);
 
-    // Update job status to failed
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const isFinalAttempt = helpers.job.attempts >= helpers.job.max_attempts;
+
+    // DUAL WRITE: Update old job status to failed
     await db.syncJob.update({
       where: { id: syncJob.id },
       data: {
         status: 'failed',
         completedAt: new Date(),
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: errorMessage,
       },
     });
 
-    console.error(
-      '[AutoDelete] Job failed:',
-      error instanceof Error ? error.message : 'Unknown error'
-    );
+    // DUAL WRITE: Record failure in new JobStatus
+    await JobStatusService.recordFailure(accountId, 'auto_delete', errorMessage, {
+      attempt: helpers.job.attempts,
+      maxAttempts: helpers.job.max_attempts,
+      isFinal: isFinalAttempt,
+      mode: settings.autoDeleteMode,
+    });
+
+    console.error('[AutoDelete] Job failed:', errorMessage);
     throw error;
   }
 };
