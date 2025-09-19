@@ -2,10 +2,10 @@ import { Task } from 'graphile-worker';
 import { FullSyncPayload, JobResult } from '../types';
 import { syncService } from '@/lib/email/sync-service';
 import { db } from '@/lib/db';
-import { JobStatusService } from '@/lib/services/job-status.service';
+import { JobStatusService, SyncCheckpoint } from '@/lib/services/job-status.service';
 
 export const fullSyncHandler: Task = async (payload, helpers) => {
-  const { accountId, resumeFromCheckpoint } = payload as FullSyncPayload;
+  const { accountId } = payload as FullSyncPayload;
 
   console.log(`[full-sync] Starting full sync for account ${accountId}`);
 
@@ -34,18 +34,30 @@ export const fullSyncHandler: Task = async (payload, helpers) => {
       return;
     }
 
+    let checkpoint: SyncCheckpoint | undefined;
+    const jobStatus = await db.jobStatus.findUnique({
+      where: {
+        accountId_jobType: {
+          accountId,
+          jobType: 'sync',
+        },
+      },
+      select: { metadata: true },
+    });
+
+    if (jobStatus?.metadata && typeof jobStatus.metadata === 'object' && 'checkpoint' in jobStatus.metadata) {
+      checkpoint = (jobStatus.metadata as { checkpoint: SyncCheckpoint | null }).checkpoint || undefined;
+      if (checkpoint) {
+        console.log('[full-sync] Found existing checkpoint, resuming sync');
+      }
+    }
+
 
     // Track progress through sync status instead of modifying job
     console.log(`[full-sync] Starting sync for account ${accountId}`);
 
-    // If resuming from checkpoint, update sync service to handle it
-    if (resumeFromCheckpoint) {
-      console.log('[full-sync] Resuming from checkpoint', resumeFromCheckpoint);
-      // TODO: Implement checkpoint resume logic in sync service
-    }
-
-    // Perform the sync
-    await syncService.syncAccount(accountId);
+    // Perform the sync with checkpoint if available
+    await syncService.syncAccount(accountId, checkpoint);
 
     // Get sync statistics
     const emailCount = await db.email.count({

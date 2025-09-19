@@ -3,7 +3,7 @@ import { ImapClient } from './imap-client';
 import { EmailStorage } from '@/lib/storage/email-storage';
 import { EmailAccount } from '@/types/email';
 import { db } from '@/lib/db';
-import { JobStatusService } from '@/lib/services/job-status.service';
+import { JobStatusService, SyncCheckpoint } from '@/lib/services/job-status.service';
 
 export class SyncService {
   private storage: EmailStorage;
@@ -12,7 +12,7 @@ export class SyncService {
     this.storage = new EmailStorage();
   }
 
-  async syncAccount(accountId: string): Promise<void> {
+  async syncAccount(accountId: string, resumeFromCheckpoint?: SyncCheckpoint): Promise<void> {
     console.log(`Starting sync for account ${accountId}`);
 
     // Record sync start
@@ -28,7 +28,7 @@ export class SyncService {
       }
 
       if (account.provider === 'gmail') {
-        await this.syncGmailAccount(account);
+        await this.syncGmailAccount(account, resumeFromCheckpoint);
       } else if (account.provider === 'imap') {
         await this.syncImapAccount(account);
       } else {
@@ -55,7 +55,10 @@ export class SyncService {
     }
   }
 
-  private async syncGmailAccount(account: EmailAccount): Promise<void> {
+  private async syncGmailAccount(
+    account: EmailAccount,
+    resumeFromCheckpoint?: SyncCheckpoint
+  ): Promise<void> {
     const client = new GmailClient(account);
 
     // Get current history ID for future incremental syncs
@@ -88,9 +91,16 @@ export class SyncService {
       });
     }
 
-    // Sync all messages regardless of label
-    let pageToken: string | undefined = undefined;
-    let totalProcessed = 0;
+    // Resume from checkpoint if provided
+    let pageToken: string | undefined = resumeFromCheckpoint?.pageToken;
+    let totalProcessed = resumeFromCheckpoint?.processedCount || 0;
+    const startedAt = resumeFromCheckpoint?.startedAt || new Date();
+
+    if (resumeFromCheckpoint) {
+      console.log(
+        `Resuming sync from checkpoint: processed=${totalProcessed}, pageToken=${pageToken}`
+      );
+    }
 
     do {
       const result = await client.getMessages(100, pageToken);
@@ -110,11 +120,35 @@ export class SyncService {
         }
       }
 
-      totalProcessed += result.messages.length;
-      console.log(`Processed ${totalProcessed} messages so far...`);
+        totalProcessed += result.messages.length;
+        console.log(`Processed ${totalProcessed} messages so far...`);
 
-      pageToken = result.nextPageToken;
+        // Save checkpoint periodically (every 500 messages)
+        if (totalProcessed % 500 === 0 && result.nextPageToken) {
+          const checkpoint: SyncCheckpoint = {
+            pageToken: result.nextPageToken,
+            processedCount: totalProcessed,
+            lastProcessedMessageId: result.messages[result.messages.length - 1]?.id,
+            startedAt,
+          };
+
+          // Store checkpoint in job status metadata
+          await JobStatusService.updateMetadata(account.id, 'sync', {
+            checkpoint,
+            lastCheckpointAt: new Date(),
+          });
+          console.log(`Checkpoint saved at ${totalProcessed} messages`);
+        }
+
+        pageToken = result.nextPageToken;
     } while (pageToken);
+
+    // Clear checkpoint on successful completion
+    await JobStatusService.updateMetadata(account.id, 'sync', {
+      checkpoint: null,
+      completedAt: new Date(),
+      totalProcessed,
+    });
 
     // Store history ID in _SYNC_STATE folder for future incremental syncs
     await db.folder.upsert({
@@ -136,7 +170,7 @@ export class SyncService {
     });
 
     console.log(
-      `Gmail sync completed. History ID set to ${currentHistoryId} for incremental syncs`
+      `Gmail sync completed. Processed ${totalProcessed} messages. History ID set to ${currentHistoryId} for incremental syncs`
     );
   }
 

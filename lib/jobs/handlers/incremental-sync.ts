@@ -8,6 +8,7 @@ import { GmailClient } from '@/lib/email/gmail-client';
 import { EmailStorage } from '@/lib/storage/email-storage';
 import { db } from '@/lib/db';
 import { JobStatusService } from '@/lib/services/job-status.service';
+import { EmailAccount } from '@/types/email';
 import parser from 'cron-parser';
 
 export const incrementalSyncHandler: Task = async (payload, helpers) => {
@@ -172,7 +173,7 @@ export const incrementalSyncHandler: Task = async (payload, helpers) => {
 };
 
 async function syncGmailIncremental(
-  account: any
+  account: EmailAccount
 ): Promise<JobResult> {
   // Get history ID from _SYNC_STATE folder
   const syncFolder = await db.folder.findFirst({
@@ -375,7 +376,7 @@ async function syncGmailIncremental(
 }
 
 async function syncImapIncremental(
-  account: any,
+  account: EmailAccount,
   storage: EmailStorage
 ): Promise<JobResult> {
   const client = new ImapClient(account);

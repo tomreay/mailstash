@@ -1,15 +1,13 @@
 import { Folder } from '@/types';
 import { EmailAccount } from '@/types/email';
+import { SyncCheckpoint } from '@/lib/services/job-status.service';
 
 export interface SyncJobPayload {
   accountId: string;
 }
 
 export interface FullSyncPayload extends SyncJobPayload {
-  resumeFromCheckpoint?: {
-    lastProcessedFolder?: string;
-    lastProcessedMessageId?: string;
-  };
+  resumeFromCheckpoint?: SyncCheckpoint;
 }
 
 export interface IncrementalSyncPayload extends SyncJobPayload {

@@ -2,6 +2,13 @@ import { db } from '@/lib/db';
 import { getWorkerUtils } from '@/lib/jobs/queue';
 
 // Type-safe metadata for different job types
+export type SyncCheckpoint = {
+  pageToken?: string;
+  processedCount: number;
+  lastProcessedMessageId?: string;
+  startedAt: Date;
+};
+
 export type SyncJobMetadata = {
   emailsProcessed?: number;
   provider?: string;
@@ -11,6 +18,11 @@ export type SyncJobMetadata = {
   attempt?: number;
   maxAttempts?: number;
   isFinal?: boolean;
+  checkpoint?: SyncCheckpoint | null;
+  lastCheckpointAt?: Date;
+  error?: string;
+  completedAt?: Date;
+  totalProcessed?: number;
 };
 
 export type AutoDeleteJobMetadata = {
@@ -249,6 +261,41 @@ export class JobStatusService {
     };
 
     return mapping[jobType] || [`email:${jobType}`];
+  }
+
+  /**
+   * Update job metadata without changing success/error status
+   */
+  static async updateMetadata(
+    accountId: string,
+    jobType: string,
+    metadata: Partial<JobMetadata>
+  ) {
+    const existing = await db.jobStatus.findUnique({
+      where: {
+        accountId_jobType: { accountId, jobType },
+      },
+    });
+
+    await db.jobStatus.upsert({
+      where: {
+        accountId_jobType: { accountId, jobType },
+      },
+      create: {
+        accountId,
+        jobType,
+        lastRunAt: new Date(),
+        success: false,
+        error: null,
+        metadata,
+      },
+      update: {
+        metadata: {
+          ...(existing?.metadata as object || {}),
+          ...metadata,
+        },
+      },
+    });
   }
 
   /**
