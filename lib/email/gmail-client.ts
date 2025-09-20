@@ -85,7 +85,7 @@ export class GmailClient {
   }
 
   async getMessages(
-    maxResults = 100,
+    maxResults: number,
     pageToken?: string
   ): Promise<{ messages: EmailMessage[]; nextPageToken?: string }> {
     try {
@@ -110,6 +110,10 @@ export class GmailClient {
       if (isGoogleApiError(error) && error.code === 401) {
         await this.refreshAccessToken();
         return this.getMessages(maxResults, pageToken);
+      } else if (isGoogleApiError(error) && (error.code === 429 || error.code === 403  || error.message.includes("Quota exceeded"))) {
+          console.log('Quota exceeded, waiting 1 minute before retry...');
+          await new Promise(resolve => setTimeout(resolve, 60000));
+          return this.getMessages(maxResults, pageToken);
       }
       throw error;
     }

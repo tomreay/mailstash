@@ -86,7 +86,7 @@ async function syncGmailFolder(
   let pageToken: string | undefined = undefined;
 
   do {
-    const result = await client.getMessages(50, pageToken);
+    const result = await client.getMessages(500, pageToken);
 
     for (const message of result.messages) {
       // Check if message already exists
