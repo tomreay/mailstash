@@ -234,7 +234,7 @@ export class JobStatusService {
         SELECT j.*
         FROM graphile_worker.jobs j
         WHERE j.key = ANY($1::text[])
-          AND (j.locked_at IS NOT NULL OR j.run_at > NOW())
+          AND j.locked_at IS NOT NULL
         ORDER BY j.created_at DESC
         LIMIT 1
       `,
