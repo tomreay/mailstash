@@ -93,7 +93,8 @@ export class GmailClient {
         userId: 'me',
         maxResults,
         pageToken,
-        // No labelIds means all messages
+        // Exclude SPAM and TRASH messages from sync
+        q: '-in:spam -in:trash',
       });
 
       const messages = await Promise.all(
