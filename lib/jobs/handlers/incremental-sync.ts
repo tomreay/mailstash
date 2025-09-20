@@ -199,6 +199,7 @@ async function syncGmailIncremental(
   const storage = new EmailStorage();
   let emailsProcessed = 0;
   let newHistoryId = startHistoryId;
+  const failedMessages: string[] = [];
 
   try {
     // Get history changes since last sync
@@ -234,9 +235,10 @@ async function syncGmailIncremental(
         }
       } catch (error) {
         console.error(
-          `[incremental-sync] Error processing message ${messageId}:`,
+          `[incremental-sync] Failed to process message ${messageId} after retries:`,
           error
         );
+        failedMessages.push(messageId);
         // Continue with other messages
       }
     }
@@ -348,6 +350,20 @@ async function syncGmailIncremental(
           path: '_SYNC_STATE',
           lastSyncId: newHistoryId,
         },
+      });
+    }
+
+    // Log summary if there were failures
+    if (failedMessages.length > 0) {
+      console.warn(
+        `[incremental-sync] Completed with ${failedMessages.length} failed messages:`,
+        failedMessages
+      );
+      // Store failed messages in metadata
+      await JobStatusService.updateMetadata(account.id, 'sync', {
+        lastIncrementalSync: new Date(),
+        failedMessageIds: failedMessages,
+        failedCount: failedMessages.length,
       });
     }
 

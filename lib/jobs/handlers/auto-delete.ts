@@ -107,12 +107,6 @@ async function processAutoDelete(
 
   const now = new Date();
 
-
-  // Count total emails that match criteria
-  const totalCount = await db.email.count({
-    where: whereClause,
-  });
-
   // Find emails matching the deletion criteria
   const emailsToProcess = await db.email.findMany({
     where: whereClause,

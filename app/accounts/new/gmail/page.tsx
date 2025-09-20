@@ -12,7 +12,6 @@ import {
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { AccountCreationLayout } from '@/components/account-creation-layout';
-import { useRouter } from 'next/navigation';
 
 export default function GmailAccountPage() {
   const [loading, setLoading] = useState(false);

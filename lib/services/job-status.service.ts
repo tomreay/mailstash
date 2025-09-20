@@ -23,6 +23,14 @@ export type SyncJobMetadata = {
   error?: string;
   completedAt?: Date;
   totalProcessed?: number;
+  failedMessageIds?: string[];
+  failedCount?: number;
+  retryStats?: {
+    totalRetries: number;
+    quotaErrors: number;
+    rateLimitErrors: number;
+  };
+  lastIncrementalSync?: Date;
 };
 
 export type AutoDeleteJobMetadata = {

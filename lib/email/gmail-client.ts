@@ -7,6 +7,7 @@ import {
   EmailAttachment,
 } from '@/types/email';
 import { db } from '@/lib/db';
+import { retryGmailOperation } from '@/lib/utils/retry';
 
 interface GoogleApiError extends Error {
   code?: number;
@@ -62,9 +63,11 @@ export class GmailClient {
 
   async getLabels(): Promise<EmailFolder[]> {
     try {
-      const response = await this.gmail.users.labels.list({
-        userId: 'me',
-      });
+      const response = await retryGmailOperation(
+        () => this.gmail.users.labels.list({ userId: 'me' }),
+        'getLabels',
+        { accountId: this.account.id }
+      );
 
       return (response.data.labels || []).map(
         (label: gmail_v1.Schema$Label) => ({
@@ -89,13 +92,17 @@ export class GmailClient {
     pageToken?: string
   ): Promise<{ messages: EmailMessage[]; nextPageToken?: string }> {
     try {
-      const response = await this.gmail.users.messages.list({
-        userId: 'me',
-        maxResults,
-        pageToken,
-        // Exclude SPAM and TRASH messages from sync
-        q: '-in:spam -in:trash',
-      });
+      const response = await retryGmailOperation(
+        () => this.gmail.users.messages.list({
+          userId: 'me',
+          maxResults,
+          pageToken,
+          // Exclude SPAM and TRASH messages from sync
+          q: '-in:spam -in:trash',
+        }),
+        'getMessages',
+        { accountId: this.account.id, pageToken, maxResults }
+      );
 
       const messages = await Promise.all(
         response.data.messages?.map((msg: gmail_v1.Schema$Message) =>
@@ -111,10 +118,6 @@ export class GmailClient {
       if (isGoogleApiError(error) && error.code === 401) {
         await this.refreshAccessToken();
         return this.getMessages(maxResults, pageToken);
-      } else if (isGoogleApiError(error) && (error.code === 429 || error.code === 403  || error.message.includes("Quota exceeded"))) {
-          console.log('Quota exceeded, waiting 1 minute before retry...');
-          await new Promise(resolve => setTimeout(resolve, 60000));
-          return this.getMessages(maxResults, pageToken);
       }
       throw error;
     }
@@ -122,11 +125,15 @@ export class GmailClient {
 
   async getMessageDetails(messageId: string): Promise<EmailMessage | null> {
     try {
-      const response = await this.gmail.users.messages.get({
-        userId: 'me',
-        id: messageId,
-        format: 'full',
-      });
+      const response = await retryGmailOperation(
+        () => this.gmail.users.messages.get({
+          userId: 'me',
+          id: messageId,
+          format: 'full',
+        }),
+        'getMessageDetails',
+        { messageId }
+      );
 
       const message = response.data;
       if (!message.payload) {
@@ -185,11 +192,15 @@ export class GmailClient {
 
   async getRawMessage(messageId: string): Promise<string> {
     try {
-      const response = await this.gmail.users.messages.get({
-        userId: 'me',
-        id: messageId,
-        format: 'raw',
-      });
+      const response = await retryGmailOperation(
+        () => this.gmail.users.messages.get({
+          userId: 'me',
+          id: messageId,
+          format: 'raw',
+        }),
+        'getRawMessage',
+        { messageId }
+      );
 
       return Buffer.from(response.data.raw || '', 'base64').toString();
     } catch (error) {
@@ -307,17 +318,21 @@ export class GmailClient {
     labelsRemoved: Map<string, string[]>;
   }> {
     try {
-      const response = await this.gmail.users.history.list({
-        userId: 'me',
-        startHistoryId,
-        maxResults,
-        historyTypes: [
-          'messageAdded',
-          'messageDeleted',
-          'labelAdded',
-          'labelRemoved',
-        ],
-      });
+      const response = await retryGmailOperation(
+        () => this.gmail.users.history.list({
+          userId: 'me',
+          startHistoryId,
+          maxResults,
+          historyTypes: [
+            'messageAdded',
+            'messageDeleted',
+            'labelAdded',
+            'labelRemoved',
+          ],
+        }),
+        'getHistory',
+        { startHistoryId, maxResults }
+      );
 
       if (!response.data.history) {
         return {
@@ -411,9 +426,11 @@ export class GmailClient {
 
   async getProfile(): Promise<{ emailAddress: string; historyId: string }> {
     try {
-      const response = await this.gmail.users.getProfile({
-        userId: 'me',
-      });
+      const response = await retryGmailOperation(
+        () => this.gmail.users.getProfile({ userId: 'me' }),
+        'getProfile',
+        { accountId: this.account.id }
+      );
 
       return {
         emailAddress: response.data.emailAddress || '',

@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { JobStatusService } from '@/lib/services/job-status.service';
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const session = await auth();
 
@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
           status: currentStatus.status === 'running' ? 'processing' :
                   jobStatus.success ? 'completed' : 'failed',
           accountId: jobStatus.accountId,
-          emailsProcessed: (jobStatus.metadata as any)?.emailsProcessed || 0,
+          emailsProcessed: (jobStatus.metadata as { emailsProcessed: number })?.emailsProcessed || 0,
           startedAt: jobStatus.lastRunAt,
           completedAt: jobStatus.lastRunAt,
           error: jobStatus.error,

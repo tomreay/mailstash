@@ -1,6 +1,5 @@
 import { StatsDAO } from '@/lib/dao/stats.dao';
 import { AccountsDAO } from '@/lib/dao/accounts.dao';
-import { JobStatusService } from '@/lib/services/job-status.service';
 import { StatsResponse } from '@/types';
 
 /**

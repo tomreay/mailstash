@@ -4,7 +4,6 @@ import { db } from '@/lib/db';
 import {
   scheduleFullSync,
   scheduleIncrementalSync,
-  getActiveJobs,
 } from '@/lib/jobs/queue';
 import { SyncResponse } from '@/types';
 import { JobStatusService } from '@/lib/services/job-status.service';

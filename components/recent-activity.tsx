@@ -49,14 +49,14 @@ export async function RecentActivity() {
         jobStatus.accountId,
         jobStatus.jobType
       );
-      const metadata = jobStatus.metadata as any || {};
+      const metadata = jobStatus.metadata as { emailsProcessed: number };
 
       return {
         id: jobStatus.id,
         type: jobStatus.jobType,
         status: currentStatus.status === 'running' ? 'processing' :
                 jobStatus.success ? 'completed' : 'failed',
-        emailsProcessed: metadata.emailsProcessed || 0,
+        emailsProcessed: metadata.emailsProcessed,
         error: jobStatus.error,
         startedAt: jobStatus.lastRunAt,
       };

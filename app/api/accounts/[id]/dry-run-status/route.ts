@@ -59,8 +59,8 @@ export async function GET(
 
     // Get metadata from job status
     const metadata = currentStatus.metadata || {};
-    const totalEmails = (metadata as any)?.totalEmails || markedCount;
-    const processedEmails = (metadata as any)?.count || markedCount;
+    const totalEmails = (metadata as { totalEmails: number })?.totalEmails || markedCount;
+    const processedEmails = (metadata as { count: number })?.count || markedCount;
 
     return NextResponse.json({
       status: currentStatus.status === 'running' ? 'processing' :

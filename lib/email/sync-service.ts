@@ -95,6 +95,12 @@ export class SyncService {
     let pageToken: string | undefined = resumeFromCheckpoint?.pageToken;
     let totalProcessed = resumeFromCheckpoint?.processedCount || 0;
     const startedAt = resumeFromCheckpoint?.startedAt || new Date();
+    const failedMessages: string[] = [];
+    const retryStats = {
+      totalRetries: 0,
+      quotaErrors: 0,
+      rateLimitErrors: 0,
+    };
 
     if (resumeFromCheckpoint) {
       console.log(
@@ -106,17 +112,26 @@ export class SyncService {
       const result = await client.getMessages(500, pageToken);
 
       for (const message of result.messages) {
-        // Check if message already exists
-        const existingMessage = await db.email.findUnique({
-          where: { messageId: message.messageId },
-        });
+        try {
+          // Check if message already exists
+          const existingMessage = await db.email.findUnique({
+            where: { messageId: message.messageId },
+          });
 
-        if (!existingMessage) {
-          // Get raw message content for EML storage
-          const rawContent = await client.getRawMessage(message.id);
+          if (!existingMessage) {
+            // Get raw message content for EML storage
+            const rawContent = await client.getRawMessage(message.id);
 
-          // Store the email
-          await this.storage.storeEmail(message, rawContent, account.id);
+            // Store the email
+            await this.storage.storeEmail(message, rawContent, account.id);
+          }
+        } catch (error) {
+          console.error(
+            `Failed to process message ${message.id} after retries:`,
+            error
+          );
+          failedMessages.push(message.id);
+          // Continue with next message
         }
       }
 
@@ -132,12 +147,17 @@ export class SyncService {
             startedAt,
           };
 
-          // Store checkpoint in job status metadata
+          // Store checkpoint in job status metadata with failure tracking
           await JobStatusService.updateMetadata(account.id, 'sync', {
             checkpoint,
             lastCheckpointAt: new Date(),
+            failedMessageIds: failedMessages,
+            failedCount: failedMessages.length,
+            retryStats,
           });
-          console.log(`Checkpoint saved at ${totalProcessed} messages`);
+          console.log(
+            `Checkpoint saved at ${totalProcessed} messages (${failedMessages.length} failures)`
+          );
         }
 
         pageToken = result.nextPageToken;
@@ -148,7 +168,17 @@ export class SyncService {
       checkpoint: null,
       completedAt: new Date(),
       totalProcessed,
+      failedMessageIds: failedMessages,
+      failedCount: failedMessages.length,
+      retryStats,
     });
+
+    if (failedMessages.length > 0) {
+      console.warn(
+        `Sync completed with ${failedMessages.length} failed messages:`,
+        failedMessages
+      );
+    }
 
     // Store history ID in _SYNC_STATE folder for future incremental syncs
     await db.folder.upsert({
@@ -170,7 +200,7 @@ export class SyncService {
     });
 
     console.log(
-      `Gmail sync completed. Processed ${totalProcessed} messages. History ID set to ${currentHistoryId} for incremental syncs`
+      `Gmail sync completed. Processed ${totalProcessed} messages, Failed ${failedMessages.length} messages. History ID set to ${currentHistoryId} for incremental syncs`
     );
   }
 

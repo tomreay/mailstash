@@ -11,7 +11,7 @@ fs.mkdir(uploadDir, { recursive: true }).catch(console.error);
 const server = new Server({
   path: '/api/accounts/upload',
   respectForwardedHeaders: true,
-  generateUrl: (req, { proto, host, path, id }) => {
+  generateUrl: (req, { host, path, id }) => {
     // Get protocol from forwarded headers or request
     const protocol = req.headers.get('x-forwarded-proto') ||
                      req.headers.get('x-scheme') ||
