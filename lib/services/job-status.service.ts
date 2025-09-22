@@ -263,7 +263,10 @@ export class JobStatusService {
    */
   private static getTaskIdentifiers(jobType: string): string[] {
     const mapping: Record<string, string[]> = {
-      sync: ['email:incremental_sync', 'email:full_sync', 'email:folder_sync'],
+      incremental_sync: ['email:incremental_sync'],
+      full_sync: ['email:full_sync'],
+      folder_sync: ['email:folder_sync'],
+      sync: ['email:incremental_sync', 'email:full_sync', 'email:folder_sync'], // Legacy support
       auto_delete: ['email:auto_delete', 'email:auto_delete_dry_run'],
       mbox_import: ['email:mbox_import'],
     };
@@ -273,37 +276,21 @@ export class JobStatusService {
 
   /**
    * Update job metadata without changing success/error status
+   * Uses raw SQL to ensure atomic merge operation
    */
   static async updateMetadata(
     accountId: string,
     jobType: string,
     metadata: Partial<JobMetadata>
   ) {
-    const existing = await db.jobStatus.findUnique({
-      where: {
-        accountId_jobType: { accountId, jobType },
-      },
-    });
-
-    await db.jobStatus.upsert({
-      where: {
-        accountId_jobType: { accountId, jobType },
-      },
-      create: {
-        accountId,
-        jobType,
-        lastRunAt: new Date(),
-        success: false,
-        error: null,
-        metadata,
-      },
-      update: {
-        metadata: {
-          ...(existing?.metadata as object || {}),
-          ...metadata,
-        },
-      },
-    });
+    await db.$executeRaw`
+      INSERT INTO "job_status" ("id", "accountId", "jobType", "lastRunAt", "success", "error", "metadata", "updatedAt")
+      VALUES (gen_random_uuid(), ${accountId}, ${jobType}, ${new Date()}, false, null, ${metadata}::jsonb, ${new Date()})
+      ON CONFLICT ("accountId", "jobType")
+      DO UPDATE SET
+        "metadata" = COALESCE("job_status"."metadata", '{}'::jsonb) || ${metadata}::jsonb,
+        "updatedAt" = ${new Date()}
+    `;
   }
 
   /**

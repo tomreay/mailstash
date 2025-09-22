@@ -87,6 +87,36 @@ export class GmailClient {
     }
   }
 
+  async getMessagesList(
+    maxResults: number,
+    pageToken?: string
+  ): Promise<{ messages: gmail_v1.Schema$Message[]; nextPageToken?: string }> {
+    try {
+      const response = await retryGmailOperation(
+        () => this.gmail.users.messages.list({
+          userId: 'me',
+          maxResults,
+          pageToken,
+          // Exclude SPAM and TRASH messages from sync
+          q: '-in:spam -in:trash',
+        }),
+        'getMessagesList',
+        { accountId: this.account.id, pageToken, maxResults }
+      );
+
+      return {
+        messages: response.data.messages || [],
+        nextPageToken: response.data.nextPageToken || undefined,
+      };
+    } catch (error) {
+      if (isGoogleApiError(error) && error.code === 401) {
+        await this.refreshAccessToken();
+        return this.getMessagesList(maxResults, pageToken);
+      }
+      throw error;
+    }
+  }
+
   async getMessages(
     maxResults: number,
     pageToken?: string
@@ -121,6 +151,135 @@ export class GmailClient {
       }
       throw error;
     }
+  }
+
+  async getMessagesBatch(
+    messageIds: string[]
+  ): Promise<{
+    messages: EmailMessage[];
+    failures: Array<{ messageId: string; error: string }>
+  }> {
+    const messages: EmailMessage[] = [];
+    const failures: Array<{ messageId: string; error: string }> = [];
+
+    // Process in chunks of 50 (Gmail batch limit recommendation)
+    const chunkSize = 50;
+
+    for (let i = 0; i < messageIds.length; i += chunkSize) {
+      const chunk = messageIds.slice(i, i + chunkSize);
+
+      try {
+        // Execute batch request using Promise.allSettled for individual error handling
+        const batchResults = await Promise.allSettled(
+          chunk.map(async (messageId) => {
+            try {
+              const response = await retryGmailOperation(
+                () => this.gmail.users.messages.get({
+                  userId: 'me',
+                  id: messageId,
+                  format: 'full',
+                }),
+                'getMessageBatch',
+                { messageId }
+              );
+
+              const parsed = this.parseMessageResponse(response.data);
+              if (parsed) {
+                return { success: true, message: parsed };
+              } else {
+                return { success: false, messageId, error: 'Failed to parse message' };
+              }
+            } catch (error) {
+              const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+              console.error(`Failed to fetch message ${messageId}:`, errorMsg);
+              return { success: false, messageId, error: errorMsg };
+            }
+          })
+        );
+
+        // Process results
+        for (const result of batchResults) {
+          if (result.status === 'fulfilled') {
+            if (result.value.success && result.value.message) {
+              messages.push(result.value.message);
+            } else if (!result.value.success) {
+              failures.push({
+                messageId: result.value.messageId!,
+                error: result.value.error!
+              });
+            }
+          } else {
+            // This shouldn't happen with our error handling, but just in case
+            console.error('Batch request rejected:', result.reason);
+          }
+        }
+
+        // Log progress
+        console.log(
+          `[Batch] Processed chunk ${Math.floor(i / chunkSize) + 1}/${Math.ceil(messageIds.length / chunkSize)}: ` +
+          `${messages.length} success, ${failures.length} failures`
+        );
+
+      } catch (error) {
+        console.error(`Batch request failed for chunk starting at ${i}:`, error);
+        // Add all messages in this chunk as failures
+        for (const messageId of chunk) {
+          failures.push({
+            messageId,
+            error: `Batch request failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+          });
+        }
+      }
+    }
+
+    return { messages, failures };
+  }
+
+  private parseMessageResponse(message: gmail_v1.Schema$Message): EmailMessage | null {
+    if (!message.payload) {
+      return null;
+    }
+
+    const headers = message.payload.headers || [];
+    const getHeader = (name: string) =>
+      headers.find(
+        (h: gmail_v1.Schema$MessagePartHeader) =>
+          h.name?.toLowerCase() === name.toLowerCase()
+      )?.value;
+
+    // Parse the message body
+    const { textContent, htmlContent } = this.extractMessageContent(
+      message.payload
+    );
+
+    // Note: Attachments are not downloaded in batch mode to avoid memory issues
+    // They can be fetched separately if needed
+
+    return {
+      id: message.id || '',
+      messageId: getHeader('Message-ID') || message.id || '',
+      threadId: message.threadId || undefined,
+      subject: getHeader('Subject') || undefined,
+      from: getHeader('From') || '',
+      to: getHeader('To') || '',
+      cc: getHeader('Cc') || undefined,
+      bcc: getHeader('Bcc') || undefined,
+      replyTo: getHeader('Reply-To') || undefined,
+      date: message.internalDate
+        ? new Date(parseInt(message.internalDate))
+        : new Date(),
+      textContent,
+      htmlContent,
+      hasAttachments: this.hasAttachments(message.payload),
+      attachments: [], // Skip attachments in batch mode
+      labels: message.labelIds || [],
+      size: message.sizeEstimate || 0,
+      isRead: !(message.labelIds || []).includes('UNREAD'),
+      isImportant: (message.labelIds || []).includes('IMPORTANT'),
+      isSpam: (message.labelIds || []).includes('SPAM'),
+      isArchived: !(message.labelIds || []).includes('INBOX'),
+      isDeleted: (message.labelIds || []).includes('TRASH'),
+    };
   }
 
   async getMessageDetails(messageId: string): Promise<EmailMessage | null> {

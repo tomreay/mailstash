@@ -20,7 +20,7 @@ export const incrementalSyncHandler: Task = async (payload, helpers) => {
 
   try {
     // Record job start in JobStatus
-    await JobStatusService.recordStart(accountId, 'sync');
+    await JobStatusService.recordStart(accountId, 'incremental_sync');
     const account = await db.emailAccount.findUnique({
       where: { id: accountId },
     });
@@ -33,7 +33,7 @@ export const incrementalSyncHandler: Task = async (payload, helpers) => {
       console.log(
         `[incremental-sync] Account ${accountId} is not active, skipping sync`
       );
-      await JobStatusService.recordSuccess(accountId, 'sync', {
+      await JobStatusService.recordSuccess(accountId, 'incremental_sync', {
         skipped: true,
         reason: 'Account inactive',
       });
@@ -67,7 +67,7 @@ export const incrementalSyncHandler: Task = async (payload, helpers) => {
     }
 
     // Record successful completion in JobStatus
-    await JobStatusService.recordSuccess(accountId, 'sync', {
+    await JobStatusService.recordSuccess(accountId, 'incremental_sync', {
       emailsProcessed: result.emailsProcessed || 0,
       provider: account.provider,
     });
@@ -143,7 +143,7 @@ export const incrementalSyncHandler: Task = async (payload, helpers) => {
     const isFinalAttempt = helpers.job.attempts >= helpers.job.max_attempts;
 
     // Record failure in JobStatus
-    await JobStatusService.recordFailure(accountId, 'sync', errorMessage, {
+    await JobStatusService.recordFailure(accountId, 'incremental_sync', errorMessage, {
       attempt: helpers.job.attempts,
       maxAttempts: helpers.job.max_attempts,
       isFinal: isFinalAttempt,
@@ -360,7 +360,7 @@ async function syncGmailIncremental(
         failedMessages
       );
       // Store failed messages in metadata
-      await JobStatusService.updateMetadata(account.id, 'sync', {
+      await JobStatusService.updateMetadata(account.id, 'incremental_sync', {
         lastIncrementalSync: new Date(),
         failedMessageIds: failedMessages,
         failedCount: failedMessages.length,

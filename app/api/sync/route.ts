@@ -43,14 +43,13 @@ export async function POST(request: Request) {
       );
     }
 
-    // Check job status to determine sync type
-    const jobStatus = await db.jobStatus.findUnique({
+    // Check job status to determine sync type (check for any sync job type)
+    const jobStatus = await db.jobStatus.findFirst({
       where: {
-        accountId_jobType: {
-          accountId: account.id,
-          jobType: 'sync',
-        },
+        accountId: account.id,
+        jobType: { in: ['incremental_sync', 'full_sync'] },
       },
+      orderBy: { lastRunAt: 'desc' },
     });
 
     // Get Gmail history ID from _SYNC_STATE folder if needed

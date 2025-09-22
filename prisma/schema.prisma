@@ -39,7 +39,8 @@ model EmailAccount {
   filterRules FilterRule[]
   settings    EmailAccountSettings?
   jobStatuses JobStatus[]
-  
+  failedSyncMessages FailedSyncMessage[]
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   
@@ -195,11 +196,11 @@ model EmailAccountSettings {
   id          String   @id @default(cuid())
   accountId   String   @unique
   account     EmailAccount  @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  
+
   // Sync frequency settings
   syncFrequency    String   @default("manual") // Cron expression (e.g. "0 * * * *" for hourly) or "manual"
   syncPaused       Boolean  @default(false)
-  
+
   // Auto-delete configuration
   autoDeleteMode        String   @default("off") // "off", "dry-run", "on"
   deleteDelayHours      Int?     // Hours after import before deletion
@@ -209,8 +210,22 @@ model EmailAccountSettings {
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  
+
   @@map("email_account_settings")
+}
+
+// Temporary table for tracking failed sync messages
+model FailedSyncMessage {
+  id            String   @id @default(cuid())
+  accountId     String
+  account       EmailAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  messageId     String   // Gmail message ID that failed
+  failureReason String?  @db.Text
+  attemptedAt   DateTime @default(now())
+
+  @@index([accountId])
+  @@index([messageId])
+  @@map("failed_sync_messages")
 }
 
 model User {

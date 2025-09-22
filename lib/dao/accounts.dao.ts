@@ -70,7 +70,9 @@ export class AccountsDAO {
       include: {
         settings: true,
         jobStatuses: {
-          where: { jobType: 'sync' },
+          where: {
+            jobType: { in: ['sync', 'incremental_sync', 'full_sync'] }
+          },
         },
         _count: {
           select: {
@@ -173,7 +175,9 @@ export class AccountsDAO {
       include: {
         settings: true,
         jobStatuses: {
-          where: { jobType: 'sync' },
+          where: {
+            jobType: { in: ['sync', 'incremental_sync', 'full_sync'] }
+          },
         },
         _count: {
           select: {
@@ -267,7 +271,9 @@ export class AccountsDAO {
       },
       include: {
         jobStatuses: {
-          where: { jobType: 'sync' },
+          where: {
+            jobType: { in: ['incremental_sync', 'full_sync'] }
+          },
         },
         _count: {
           select: {

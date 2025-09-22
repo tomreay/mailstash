@@ -70,7 +70,9 @@ export async function RecentActivity() {
     },
     include: {
       jobStatuses: {
-        where: { jobType: 'sync' },
+        where: {
+          jobType: { in: ['incremental_sync', 'full_sync'] }
+        },
       },
     },
   });

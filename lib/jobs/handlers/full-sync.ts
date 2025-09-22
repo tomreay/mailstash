@@ -11,7 +11,7 @@ export const fullSyncHandler: Task = async (payload, helpers) => {
 
   try {
     // Record job start in JobStatus
-    await JobStatusService.recordStart(accountId, 'sync');
+    await JobStatusService.recordStart(accountId, 'full_sync');
     // Check if account exists and is active
     const account = await db.emailAccount.findUnique({
       where: { id: accountId },
@@ -27,7 +27,7 @@ export const fullSyncHandler: Task = async (payload, helpers) => {
         `[full-sync] Account ${accountId} is not active, skipping sync`
       );
       // Record skip in JobStatus
-      await JobStatusService.recordSuccess(accountId, 'sync', {
+      await JobStatusService.recordSuccess(accountId, 'full_sync', {
         skipped: true,
         reason: 'Account inactive',
       });
@@ -39,7 +39,7 @@ export const fullSyncHandler: Task = async (payload, helpers) => {
       where: {
         accountId_jobType: {
           accountId,
-          jobType: 'sync',
+          jobType: 'full_sync',
         },
       },
       select: { metadata: true },
@@ -65,7 +65,7 @@ export const fullSyncHandler: Task = async (payload, helpers) => {
     });
 
     // Record successful completion in JobStatus
-    await JobStatusService.recordSuccess(accountId, 'sync', {
+    await JobStatusService.recordSuccess(accountId, 'full_sync', {
       emailsProcessed: emailCount,
       provider: account.provider,
       fullSync: true,
@@ -119,7 +119,7 @@ export const fullSyncHandler: Task = async (payload, helpers) => {
     const isFinalAttempt = helpers.job.attempts >= helpers.job.max_attempts;
 
     // Record failure in JobStatus
-    await JobStatusService.recordFailure(accountId, 'sync', errorMessage, {
+    await JobStatusService.recordFailure(accountId, 'full_sync', errorMessage, {
       attempt: helpers.job.attempts,
       maxAttempts: helpers.job.max_attempts,
       isFinal: isFinalAttempt,

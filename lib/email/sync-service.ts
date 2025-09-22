@@ -15,44 +15,23 @@ export class SyncService {
   async syncAccount(accountId: string, resumeFromCheckpoint?: SyncCheckpoint): Promise<void> {
     console.log(`Starting sync for account ${accountId}`);
 
-    // Record sync start
-    await JobStatusService.recordStart(accountId, 'sync');
+    const account = await db.emailAccount.findUnique({
+      where: { id: accountId },
+    });
 
-    try {
-      const account = await db.emailAccount.findUnique({
-        where: { id: accountId },
-      });
-
-      if (!account) {
-        throw new Error(`Account ${accountId} not found`);
-      }
-
-      if (account.provider === 'gmail') {
-        await this.syncGmailAccount(account, resumeFromCheckpoint);
-      } else if (account.provider === 'imap') {
-        await this.syncImapAccount(account);
-      } else {
-        throw new Error(`Unsupported provider: ${account.provider}`);
-      }
-
-      // Record successful sync
-      await JobStatusService.recordSuccess(accountId, 'sync', {
-        fullSync: true,
-      });
-
-      console.log(`Sync completed for account ${accountId}`);
-    } catch (error) {
-      console.error(`Sync failed for account ${accountId}:`, error);
-
-      // Record sync failure
-      await JobStatusService.recordFailure(
-        accountId,
-        'sync',
-        error instanceof Error ? error.message : 'Unknown error'
-      );
-
-      throw error;
+    if (!account) {
+      throw new Error(`Account ${accountId} not found`);
     }
+
+    if (account.provider === 'gmail') {
+      await this.syncGmailAccount(account, resumeFromCheckpoint);
+    } else if (account.provider === 'imap') {
+      await this.syncImapAccount(account);
+    } else {
+      throw new Error(`Unsupported provider: ${account.provider}`);
+    }
+
+    console.log(`Sync completed for account ${accountId}`);
   }
 
   private async syncGmailAccount(
@@ -109,46 +88,81 @@ export class SyncService {
     }
 
     do {
-      const result = await client.getMessages(500, pageToken);
+      // Get list of message IDs
+      const listResponse = await client.getMessagesList(500, pageToken);
+      const messageIds = listResponse.messages?.map(msg => msg.id!).filter(id => id) || [];
 
-      for (const message of result.messages) {
-        try {
-          // Check if message already exists
-          const existingMessage = await db.email.findUnique({
-            where: { messageId: message.messageId },
-          });
+      if (messageIds.length > 0) {
+        // Use batch API to fetch message details
+        const batchResult = await client.getMessagesBatch(messageIds);
 
-          if (!existingMessage) {
-            // Get raw message content for EML storage
-            const rawContent = await client.getRawMessage(message.id);
+        // Process successful messages
+        for (const message of batchResult.messages) {
+          try {
+            // Check if message already exists
+            const existingMessage = await db.email.findUnique({
+              where: { messageId: message.messageId },
+            });
 
-            // Store the email
-            await this.storage.storeEmail(message, rawContent, account.id);
+            if (!existingMessage) {
+              // Get raw message content for EML storage
+              const rawContent = await client.getRawMessage(message.id);
+
+              // Store the email
+              await this.storage.storeEmail(message, rawContent, account.id);
+            }
+          } catch (error) {
+            console.error(
+              `Failed to process message ${message.id} after retries:`,
+              error
+            );
+            failedMessages.push(message.id);
+
+            // Log to database
+            await db.failedSyncMessage.create({
+              data: {
+                accountId: account.id,
+                messageId: message.id,
+                failureReason: error instanceof Error ? error.message : 'Unknown error during storage',
+              },
+            }).catch(dbError => {
+              console.error('Failed to log failure to database:', dbError);
+            });
           }
-        } catch (error) {
-          console.error(
-            `Failed to process message ${message.id} after retries:`,
-            error
-          );
-          failedMessages.push(message.id);
-          // Continue with next message
         }
-      }
 
-        totalProcessed += result.messages.length;
-        console.log(`Processed ${totalProcessed} messages so far...`);
+        // Log batch API failures to database
+        for (const failure of batchResult.failures) {
+          failedMessages.push(failure.messageId);
+
+          await db.failedSyncMessage.create({
+            data: {
+              accountId: account.id,
+              messageId: failure.messageId,
+              failureReason: failure.error,
+            },
+          }).catch(dbError => {
+            console.error('Failed to log failure to database:', dbError);
+          });
+        }
+
+        totalProcessed += messageIds.length;
+        console.log(
+          `Processed batch: ${batchResult.messages.length} success, ${batchResult.failures.length} failures. ` +
+          `Total progress: ${totalProcessed} messages`
+        );
 
         // Save checkpoint periodically (every 500 messages)
-        if (totalProcessed % 500 === 0 && result.nextPageToken) {
+        if (totalProcessed % 500 === 0 && listResponse.nextPageToken) {
           const checkpoint: SyncCheckpoint = {
-            pageToken: result.nextPageToken,
+            pageToken: listResponse.nextPageToken,
             processedCount: totalProcessed,
-            lastProcessedMessageId: result.messages[result.messages.length - 1]?.id,
+            lastProcessedMessageId: messageIds[messageIds.length - 1],
             startedAt,
           };
 
           // Store checkpoint in job status metadata with failure tracking
-          await JobStatusService.updateMetadata(account.id, 'sync', {
+          await JobStatusService.updateMetadata(account.id, 'full_sync', {
             checkpoint,
             lastCheckpointAt: new Date(),
             failedMessageIds: failedMessages,
@@ -159,12 +173,13 @@ export class SyncService {
             `Checkpoint saved at ${totalProcessed} messages (${failedMessages.length} failures)`
           );
         }
+      }
 
-        pageToken = result.nextPageToken;
+      pageToken = listResponse.nextPageToken || undefined;
     } while (pageToken);
 
     // Clear checkpoint on successful completion
-    await JobStatusService.updateMetadata(account.id, 'sync', {
+    await JobStatusService.updateMetadata(account.id, 'full_sync', {
       checkpoint: null,
       completedAt: new Date(),
       totalProcessed,
@@ -206,6 +221,8 @@ export class SyncService {
 
   private async syncImapAccount(account: EmailAccount): Promise<void> {
     const client = new ImapClient(account);
+    let totalProcessed = 0;
+    const failedMessages: string[] = [];
 
     try {
       await client.connect();
@@ -247,7 +264,7 @@ export class SyncService {
             where: {
               accountId_jobType: {
                 accountId: account.id,
-                jobType: 'sync',
+                jobType: 'full_sync',
               },
             },
             select: { lastRunAt: true },
@@ -261,24 +278,53 @@ export class SyncService {
           );
 
           for (const message of messages) {
-            // Check if message already exists
-            const existingMessage = await db.email.findUnique({
-              where: { messageId: message.messageId },
-            });
+            try {
+              // Check if message already exists
+              const existingMessage = await db.email.findUnique({
+                where: { messageId: message.messageId },
+              });
 
-            if (!existingMessage) {
-              // Get raw message content for EML storage
-              const rawContent = await client.getRawMessage(
-                mailbox.path,
-                parseInt(message.id)
+              if (!existingMessage) {
+                // Get raw message content for EML storage
+                const rawContent = await client.getRawMessage(
+                  mailbox.path,
+                  parseInt(message.id)
+                );
+
+                // Store the email
+                await this.storage.storeEmail(message, rawContent, account.id);
+                totalProcessed++;
+              }
+            } catch (error) {
+              console.error(
+                `Failed to process IMAP message ${message.id}:`,
+                error
               );
-
-              // Store the email
-              await this.storage.storeEmail(message, rawContent, account.id);
+              failedMessages.push(message.id);
+              // Continue with next message
             }
           }
         }
       }
+
+      // Update metadata with results
+      await JobStatusService.updateMetadata(account.id, 'full_sync', {
+        completedAt: new Date(),
+        totalProcessed,
+        failedMessageIds: failedMessages,
+        failedCount: failedMessages.length,
+      });
+
+      if (failedMessages.length > 0) {
+        console.warn(
+          `IMAP sync completed with ${failedMessages.length} failed messages:`,
+          failedMessages
+        );
+      }
+
+      console.log(
+        `IMAP sync completed. Processed ${totalProcessed} messages, Failed ${failedMessages.length} messages`
+      );
     } finally {
       await client.disconnect();
     }
