@@ -91,7 +91,7 @@ async function syncGmailFolder(
     for (const message of result.messages) {
       // Check if message already exists
       const existingMessage = await db.email.findUnique({
-        where: { messageId: message.messageId },
+        where: { accountId_messageId: { messageId: message.messageId, accountId: account.id }},
       });
 
       if (!existingMessage) {
@@ -143,7 +143,7 @@ async function syncImapFolder(
 
     for (const message of messages) {
       const existingMessage = await db.email.findUnique({
-        where: { messageId: message.messageId },
+        where: { accountId_messageId: { messageId: message.messageId, accountId: account.id } },
       });
 
       if (!existingMessage) {

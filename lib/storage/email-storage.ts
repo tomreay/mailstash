@@ -39,7 +39,7 @@ export class EmailStorage {
 
     // Store email metadata in database
     await db.email.upsert({
-      where: {messageId: email.messageId},
+      where: { accountId_messageId: { messageId: email.messageId, accountId } },
       update: {
         subject: email.subject,
         from: email.from,
@@ -89,8 +89,11 @@ export class EmailStorage {
 
     // Store attachments metadata
     if (email.attachments && email.attachments.length > 0) {
-      const emailRecord = await db.email.findUnique({
-        where: {messageId: email.messageId},
+      const emailRecord = await db.email.findFirst({
+        where: {
+          messageId: email.messageId,
+          accountId: accountId
+        },
       })
 
       if (emailRecord) {

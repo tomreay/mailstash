@@ -99,9 +99,12 @@ export class SyncService {
         // Process successful messages
         for (const message of batchResult.messages) {
           try {
-            // Check if message already exists
-            const existingMessage = await db.email.findUnique({
-              where: { messageId: message.messageId },
+            // Check if message already exists for this account
+            const existingMessage = await db.email.findFirst({
+              where: {
+                messageId: message.messageId,
+                accountId: account.id
+              },
             });
 
             if (!existingMessage) {
@@ -147,10 +150,6 @@ export class SyncService {
         }
 
         totalProcessed += messageIds.length;
-        console.log(
-          `Processed batch: ${batchResult.messages.length} success, ${batchResult.failures.length} failures. ` +
-          `Total progress: ${totalProcessed} messages`
-        );
 
         // Save checkpoint periodically (every 500 messages)
         if (totalProcessed % 500 === 0 && listResponse.nextPageToken) {
@@ -178,9 +177,8 @@ export class SyncService {
       pageToken = listResponse.nextPageToken || undefined;
     } while (pageToken);
 
-    // Clear checkpoint on successful completion
+    // Update metadata on completion (keep the stats, just clear checkpoint)
     await JobStatusService.updateMetadata(account.id, 'full_sync', {
-      checkpoint: null,
       completedAt: new Date(),
       totalProcessed,
       failedMessageIds: failedMessages,
@@ -279,9 +277,12 @@ export class SyncService {
 
           for (const message of messages) {
             try {
-              // Check if message already exists
-              const existingMessage = await db.email.findUnique({
-                where: { messageId: message.messageId },
+              // Check if message already exists for this account
+              const existingMessage = await db.email.findFirst({
+                where: {
+                  messageId: message.messageId,
+                  accountId: account.id
+                },
               });
 
               if (!existingMessage) {

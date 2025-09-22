@@ -65,7 +65,7 @@ export const mboxImportHandler: Task = async (payload, helpers) => {
 
         // Check if email already exists
         const existing = await db.email.findUnique({
-          where: { messageId: emailMessage.messageId },
+          where: { accountId_messageId: {messageId: emailMessage.messageId, accountId } },
         });
 
         if (!existing) {
@@ -79,7 +79,7 @@ export const mboxImportHandler: Task = async (payload, helpers) => {
           // Store attachments if any
           if (emailData.attachments && emailData.attachments.length > 0) {
             const emailRecord = await db.email.findUnique({
-              where: { messageId: emailMessage.messageId },
+              where: { accountId_messageId: { messageId: emailMessage.messageId, accountId } },
             });
 
             if (emailRecord) {
