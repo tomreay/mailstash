@@ -239,6 +239,18 @@ async function syncGmailIncremental(
           error
         );
         failedMessages.push(messageId);
+
+        // Log to failed sync messages table
+        await db.failedSyncMessage.create({
+          data: {
+            accountId: account.id,
+            messageId: messageId,
+            failureReason: error instanceof Error ? error.message : 'Unknown error during incremental sync',
+          },
+        }).catch(dbError => {
+          console.error('[incremental-sync] Failed to log failure to database:', dbError);
+        });
+
         // Continue with other messages
       }
     }
@@ -397,6 +409,7 @@ async function syncImapIncremental(
 ): Promise<JobResult> {
   const client = new ImapClient(account);
   let emailsProcessed = 0;
+  const failedMessages: string[] = [];
 
   try {
     await client.connect();
@@ -455,6 +468,19 @@ async function syncImapIncremental(
               `[incremental-sync] Error storing message ${message.messageId}:`,
               error
             );
+            failedMessages.push(message.id);
+
+            // Log to failed sync messages table
+            await db.failedSyncMessage.create({
+              data: {
+                accountId: account.id,
+                messageId: message.id,
+                failureReason: error instanceof Error ? error.message : 'Unknown error during IMAP incremental sync',
+              },
+            }).catch(dbError => {
+              console.error('[incremental-sync] Failed to log failure to database:', dbError);
+            });
+
             // Continue with other messages
           }
         } else {
@@ -490,6 +516,20 @@ async function syncImapIncremental(
     }
   } finally {
     await client.disconnect();
+  }
+
+  // Log summary if there were failures
+  if (failedMessages.length > 0) {
+    console.warn(
+      `[incremental-sync] IMAP sync completed with ${failedMessages.length} failed messages:`,
+      failedMessages
+    );
+    // Store failed messages in metadata
+    await JobStatusService.updateMetadata(account.id, 'incremental_sync', {
+      lastIncrementalSync: new Date(),
+      failedMessageIds: failedMessages,
+      failedCount: failedMessages.length,
+    });
   }
 
   return {
