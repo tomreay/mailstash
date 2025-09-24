@@ -16,12 +16,14 @@ export interface MboxEmailData {
   date: Date;
   rawContent: string;
   hasAttachments: boolean;
-  attachments?: Array<{
+  attachments?: Array<MboxEmailAttachment>;
+}
+
+export interface MboxEmailAttachment {
     filename: string;
     contentType: string;
     size: number;
     content: Buffer;
-  }>;
 }
 
 export class MboxParser {

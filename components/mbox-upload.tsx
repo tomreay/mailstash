@@ -123,7 +123,7 @@ export function MboxUpload({
 
   const pauseUpload = () => {
     if (currentUpload) {
-      currentUpload.abort();
+      void currentUpload.abort();
       setIsUploading(false);
       setIsPaused(true);
     }
@@ -139,7 +139,7 @@ export function MboxUpload({
 
   const cancelUpload = () => {
     if (currentUpload) {
-      currentUpload.abort();
+      void currentUpload.abort();
       setCurrentUpload(null);
     }
     setIsUploading(false);
@@ -174,7 +174,9 @@ export function MboxUpload({
                     console.log('File input onChange triggered');
                     const file = e.target.files?.[0];
                     console.log('Selected file:', file);
-                    if (file) handleFileSelect(file);
+                    if (file) {
+                        void handleFileSelect(file);
+                    }
                   }}
                   disabled={disabled}
                   className='hidden'
@@ -298,7 +300,7 @@ export function MboxUpload({
                     variant='outline'
                     onClick={() => {
                       setUploadError(null);
-                      uploadFile(selectedFile);
+                      void uploadFile(selectedFile);
                     }}
                   >
                     Retry Upload

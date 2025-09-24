@@ -57,7 +57,7 @@ export function DryRunStatus({ accountId }: { accountId: string }) {
   }, [accountId, router]);
 
   useEffect(() => {
-    fetchStatus();
+    void fetchStatus();
   }, [fetchStatus]);
 
   const shouldPoll =
