@@ -4,6 +4,7 @@ import { useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { buildEmailsUrl } from '@/lib/utils/urls';
 
 interface EmailSearchProps {
   initialQuery: string;
@@ -22,13 +23,14 @@ export function EmailSearch({
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
 
-    const params = new URLSearchParams();
-    params.set('page', '1');
-    if (query) params.set('search', query);
-    if (accountId) params.set('accountId', accountId);
-    if (filter) params.set('filter', filter);
+    const url = buildEmailsUrl({
+      page: 1,
+      search: query,
+      accountId,
+      filter,
+    });
 
-    router.push(`/emails?${params.toString()}`);
+    router.push(url);
   };
 
   return (

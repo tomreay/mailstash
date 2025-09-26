@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { Archive, Check, Loader2 } from 'lucide-react';
+import { DateDisplay } from '@/components/ui/date-display';
 
 interface Props {
   provider: string;
@@ -30,9 +31,11 @@ export function SyncStatus(props: Props) {
         };
       default:
         return {
-          text: props.lastSyncAt
-            ? `Last sync: ${new Date(props.lastSyncAt).toLocaleString()}`
-            : 'Never synced',
+          text: props.lastSyncAt ? (
+            <DateDisplay date={props.lastSyncAt} format='relative' prefix='Last sync' />
+          ) : (
+            'Never synced'
+          ),
           classes: 'text-green-600 bg-green-50',
           icon: <Check className='h-4 w-4' />,
         };

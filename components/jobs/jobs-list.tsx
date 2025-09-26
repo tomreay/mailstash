@@ -3,7 +3,10 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, Briefcase } from 'lucide-react';
+import { EmptyState } from '@/components/ui/empty-state';
+import { DateDisplay } from '@/components/ui/date-display';
+import { getJobTypeColor } from '@/lib/constants/account-styles';
 
 interface Job {
   id: string;
@@ -51,20 +54,19 @@ export function JobsList({ jobs, type, maxDisplay }: JobsListProps) {
     }
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString();
-  };
-
-  const getJobTypeColor = (taskIdentifier: string) => {
-    if (taskIdentifier.includes('full_sync')) return 'text-blue-600';
-    if (taskIdentifier.includes('incremental_sync')) return 'text-green-600';
-    if (taskIdentifier.includes('folder_sync')) return 'text-purple-600';
-    if (taskIdentifier.includes('cleanup')) return 'text-gray-600';
-    return 'text-gray-800';
-  };
 
   if (jobs.length === 0) {
-    return <p className='text-gray-500'>No {type} jobs</p>;
+    return (
+      <EmptyState
+        icon={Briefcase}
+        title={`No ${type} jobs`}
+        description={
+          type === 'active' ? 'No jobs are currently running' :
+          type === 'pending' ? 'No jobs are scheduled' :
+          'No failed jobs to display'
+        }
+      />
+    );
   }
 
   const displayJobs = maxDisplay ? jobs.slice(0, maxDisplay) : jobs;
@@ -97,13 +99,18 @@ export function JobsList({ jobs, type, maxDisplay }: JobsListProps) {
                 >
                   {job.task_identifier}
                 </p>
-                <p className='text-sm text-gray-600'>
-                  {type === 'active' && job.locked_at
-                    ? `Started: ${formatDate(job.locked_at)}`
-                    : type === 'pending'
-                      ? `Scheduled: ${formatDate(job.run_at)}`
-                      : `Failed: ${formatDate(job.run_at)}`}
-                </p>
+                <DateDisplay
+                  date={type === 'active' && job.locked_at ? job.locked_at : job.run_at}
+                  format='absolute'
+                  prefix={
+                    type === 'active' && job.locked_at
+                      ? 'Started:'
+                      : type === 'pending'
+                        ? 'Scheduled:'
+                        : 'Failed:'
+                  }
+                  className='text-sm text-gray-600'
+                />
                 {job.payload?.accountId ? (
                   <p className='text-sm text-gray-600'>
                     Account: {job.payload.accountId as string}

@@ -1,12 +1,13 @@
 import Link from 'next/link';
-import { Mail, Settings, Archive, ChevronRight } from 'lucide-react';
+import { Settings, ChevronRight } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { formatBytes } from '@/lib/utils';
 import { AccountWithStats } from '@/lib/dao/accounts.dao';
 import { SyncButton } from './sync-button';
 import { SyncStatus } from './sync-status';
+import { AccountStats } from './account-stats';
+import { getProviderStyle, getSyncStatusStyle } from '@/lib/constants/account-styles';
 import * as React from 'react';
 
 interface AccountCardProps {
@@ -14,35 +15,23 @@ interface AccountCardProps {
 }
 
 export function AccountCard({ account }: AccountCardProps) {
-  const providerIcon = (() => {
-    if (account.provider === 'gmail') {
-      return <Mail className='h-5 w-5 text-red-600' />;
-    } else if (account.provider === 'archive') {
-      return <Archive className='h-5 w-5 text-purple-600' />;
-    } else {
-      return <Mail className='h-5 w-5 text-blue-600' />;
-    }
-  })();
+  const providerStyle = getProviderStyle(account.provider);
+  const ProviderIcon = providerStyle.icon;
+  const syncStatusStyle = getSyncStatusStyle(account.syncStatus);
 
   return (
     <Card className='hover:shadow-lg transition-shadow relative overflow-hidden h-full'>
       {/* Status Bar */}
-      <div
-        className={`absolute top-0 left-0 right-0 h-1 ${
-          account.syncStatus === 'syncing'
-            ? 'bg-blue-600 animate-pulse'
-            : account.syncStatus === 'error'
-              ? 'bg-red-600'
-              : 'bg-green-600'
-        }`}
-      />
+      <div className={`absolute top-0 left-0 right-0 h-1 ${syncStatusStyle}`} />
 
       <Link href={`/emails?accountId=${account.id}`}>
         <div className='cursor-pointer'>
           <CardHeader className='pb-4'>
             <div className='flex items-start justify-between'>
               <div className='flex items-center gap-3'>
-                <div className='p-2 bg-gray-100 rounded-lg'>{providerIcon}</div>
+                <div className='p-2 bg-gray-100 rounded-lg'>
+                  <ProviderIcon className={`h-5 w-5 ${providerStyle.iconColor}`} />
+                </div>
                 <div>
                   <CardTitle className='text-lg font-semibold'>
                     {account.displayName || account.email}
@@ -56,25 +45,11 @@ export function AccountCard({ account }: AccountCardProps) {
           </CardHeader>
 
           <CardContent className='space-y-4'>
-            {/* Stats Grid */}
-            <div className='grid grid-cols-3 gap-4 text-center'>
-              <div>
-                <p className='text-2xl font-semibold'>
-                  {account.emailCount.toLocaleString()}
-                </p>
-                <p className='text-xs text-gray-500'>Emails</p>
-              </div>
-              <div>
-                <p className='text-2xl font-semibold'>{account.folderCount}</p>
-                <p className='text-xs text-gray-500'>Folders</p>
-              </div>
-              <div>
-                <p className='text-2xl font-semibold'>
-                  {formatBytes(account.storageUsed, 0)}
-                </p>
-                <p className='text-xs text-gray-500'>Storage</p>
-              </div>
-            </div>
+            <AccountStats
+              emailCount={account.emailCount}
+              folderCount={account.folderCount}
+              storageUsed={account.storageUsed}
+            />
 
             <SyncStatus
               syncStatus={account.syncStatus}

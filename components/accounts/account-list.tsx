@@ -11,6 +11,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
 
 export async function AccountList() {
   const session = await auth();
@@ -26,22 +27,20 @@ export async function AccountList() {
   if (accounts.length === 0) {
     return (
       <Card className='mb-8'>
-        <CardContent className='text-center py-12'>
-          <div className='h-12 w-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4'>
-            <Plus className='h-6 w-6 text-gray-600' />
-          </div>
-          <h3 className='text-lg font-medium text-gray-900 mb-2'>
-            No email accounts connected
-          </h3>
-          <p className='text-gray-500 mb-4'>
-            Connect an email account to start archiving your emails
-          </p>
-          <Link href='/accounts/new'>
-            <Button>
-              <Plus className='h-4 w-4 mr-2' />
-              Add Your First Account
-            </Button>
-          </Link>
+        <CardContent className='py-12'>
+          <EmptyState
+            icon={Plus}
+            title='No email accounts connected'
+            description='Connect an email account to start archiving your emails'
+            action={
+              <Link href='/accounts/new'>
+                <Button>
+                  <Plus className='h-4 w-4 mr-2' />
+                  Add Your First Account
+                </Button>
+              </Link>
+            }
+          />
         </CardContent>
       </Card>
     );

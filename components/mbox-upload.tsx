@@ -6,6 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import { Upload as TusUpload } from 'tus-js-client';
+import { formatFileSize } from '@/lib/utils/format';
 
 interface MboxUploadProps {
   onFileSelect: (file: File) => void;
@@ -149,13 +150,6 @@ export function MboxUpload({
     onFileSelect(null as unknown as File);
   };
 
-  const formatFileSize = (bytes: number): string => {
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-    if (bytes < 1024 * 1024 * 1024)
-      return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-    return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
-  };
 
   return (
     <div className='space-y-4'>

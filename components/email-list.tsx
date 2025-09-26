@@ -4,6 +4,7 @@ import { EmailListItem } from '@/types';
 import { EmailSearch } from './email-search';
 import { EmailItem } from './email-item';
 import { Pagination } from './pagination';
+import { EmptyState } from '@/components/ui/empty-state';
 
 interface EmailListProps {
   initialEmails: EmailListItem[];
@@ -35,17 +36,15 @@ export function EmailList({
 
       {/* Empty State */}
       {initialEmails.length === 0 && (
-        <div className='text-center py-12'>
-          <Mail className='h-12 w-12 text-gray-400 mx-auto mb-4' />
-          <h3 className='text-lg font-medium text-gray-900 mb-2'>
-            {searchQuery ? 'No emails found' : 'No emails yet'}
-          </h3>
-          <p className='text-gray-500'>
-            {searchQuery
+        <EmptyState
+          icon={Mail}
+          title={searchQuery ? 'No emails found' : 'No emails yet'}
+          description={
+            searchQuery
               ? 'Try adjusting your search query'
-              : 'Sync your email account to see your emails here'}
-          </p>
-        </div>
+              : 'Sync your email account to see your emails here'
+          }
+        />
       )}
 
       {/* Email List */}

@@ -6,6 +6,8 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Activity } from 'lucide-react';
 import { db } from '@/lib/db';
 import { auth } from '@/lib/auth';
 import { JobStatusService } from '@/lib/services/job-status.service';
@@ -186,15 +188,12 @@ export async function RecentActivity() {
               </span>
             </div>
           )}
-          {!lastSync && !anySyncing && syncJobs.length === 0 && (
-            <div className='flex items-center'>
-              <Badge variant='outline' className='mr-2'>
-                INFO
-              </Badge>
-              <span className='text-sm text-muted-foreground'>
-                No sync activity yet. Click &quot;Sync Now&quot; to start.
-              </span>
-            </div>
+          {!lastSync && !anySyncing && syncJobs.length === 0 && totalEmails === 0 && (
+            <EmptyState
+              icon={Activity}
+              title="No activity yet"
+              description="Click 'Sync Now' on any account to start syncing emails"
+            />
           )}
         </div>
       </CardContent>

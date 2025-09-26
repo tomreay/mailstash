@@ -1,4 +1,4 @@
-import {EmailAccount, EmailMessage} from '@/types/email';
+import {EmailAccount} from '@/types/email';
 import { EmailAccountSettings } from '@/lib/types/account-settings';
 import { createEmailClient, isGmailClient } from '@/lib/email/client-factory';
 import { db } from '@/lib/db';

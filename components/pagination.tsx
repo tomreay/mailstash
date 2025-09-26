@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
+import { buildEmailsUrl } from '@/lib/utils/urls';
 
 interface PaginationProps {
   currentPage: number;
@@ -24,12 +25,12 @@ export function Pagination({
   const endItem = Math.min(currentPage * itemsPerPage, total);
 
   const buildPageUrl = (page: number) => {
-    const params = new URLSearchParams();
-    params.set('page', page.toString());
-    if (searchQuery) params.set('search', searchQuery);
-    if (accountId) params.set('accountId', accountId);
-    if (filter) params.set('filter', filter);
-    return `/emails?${params.toString()}`;
+    return buildEmailsUrl({
+      page,
+      search: searchQuery,
+      accountId,
+      filter,
+    });
   };
 
   return (
