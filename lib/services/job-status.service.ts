@@ -67,6 +67,11 @@ export interface CurrentStatus<T extends JobMetadata = JobMetadata> {
   maxAttempts?: number;
 }
 
+// Type for the PgClient from graphile-worker
+interface PgClient {
+  query: (sql: string, values: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;
+}
+
 export class JobStatusService {
   /**
    * Record the start of a job execution
@@ -175,6 +180,7 @@ export class JobStatusService {
         lastRunAt: lastStatus?.lastRunAt,
         attempt: activeJob.attempts,
         maxAttempts: activeJob.max_attempts,
+        metadata: lastStatus?.metadata as JobMetadata | undefined,
       };
     }
 
@@ -204,6 +210,30 @@ export class JobStatusService {
   }
 
   /**
+   * Check if there's a queued job (exists but not yet running)
+   */
+  static async getQueuedJob(accountId: string, jobType: string): Promise<boolean> {
+    const utils = await getWorkerUtils();
+    const jobKeys = this.getJobKeys(accountId, jobType);
+
+    return utils.withPgClient(async (client: PgClient) => {
+      const { rows } = await client.query(
+        `
+        SELECT 1
+        FROM graphile_worker.jobs j
+        WHERE j.key = ANY($1::text[])
+          AND j.locked_at IS NULL
+        LIMIT 1
+      `,
+        [jobKeys]
+      );
+
+      return rows.length > 0;
+    });
+  }
+
+
+  /**
    * Get active job from graphile-worker using job keys
    */
   private static async getActiveGraphileJob(accountId: string, jobType: string): Promise<{
@@ -215,20 +245,32 @@ export class JobStatusService {
     // Generate job keys for this account and job type
     const jobKeys = this.getJobKeys(accountId, jobType);
 
-    // Type for the PgClient from graphile-worker
-    interface PgClient {
-      query: (sql: string, values: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;
-    }
+    console.log('[getActiveGraphileJob] Looking for jobs with keys:', jobKeys);
 
     // Type for the job row from graphile-worker
     interface GraphileJob {
       attempts: number;
       max_attempts: number;
       key: string;
+      locked_at: Date | null;
       [key: string]: unknown;
     }
 
     const job = await utils.withPgClient(async (client: PgClient) => {
+      // First check all jobs with these keys (including queued ones)
+      const { rows: allJobs } = await client.query(
+        `
+        SELECT j.key, j.locked_at, j.run_at, j.attempts
+        FROM graphile_worker.jobs j
+        WHERE j.key = ANY($1::text[])
+        ORDER BY j.created_at DESC
+      `,
+        [jobKeys]
+      );
+
+      console.log('[getActiveGraphileJob] All jobs found:', allJobs);
+
+      // Now check for actively running job (locked_at NOT NULL)
       const { rows } = await client.query(
         `
         SELECT j.*
@@ -240,6 +282,16 @@ export class JobStatusService {
       `,
         [jobKeys]
       );
+
+      if (rows[0]) {
+        console.log('[getActiveGraphileJob] Active job found:', {
+          key: (rows[0] as GraphileJob).key,
+          locked_at: (rows[0] as GraphileJob).locked_at,
+          attempts: (rows[0] as GraphileJob).attempts
+        });
+      } else {
+        console.log('[getActiveGraphileJob] No active job found (no locked_at)');
+      }
 
       return rows[0] as GraphileJob | undefined;
     });

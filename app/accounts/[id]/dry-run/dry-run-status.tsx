@@ -125,8 +125,8 @@ export function DryRunStatus({ accountId }: { accountId: string }) {
             {status?.status === 'pending' &&
               'Dry run is queued and will start soon'}
             {status?.status === 'running' &&
-              'Dry run is currently processing your emails'}
-            {status?.status === 'completed' && 'Dry run completed successfully'}
+              'Analyzing your emails against deletion rules'}
+            {status?.status === 'completed' && 'Dry run analysis completed'}
             {status?.status === 'failed' && 'Dry run failed to complete'}
             {!status && 'No dry run has been triggered yet'}
           </CardDescription>
@@ -137,18 +137,12 @@ export function DryRunStatus({ accountId }: { accountId: string }) {
               <div className='flex items-center gap-2'>
                 <Loader2 className='h-5 w-5 animate-spin text-blue-600' />
                 <span className='text-sm font-medium'>
-                  Processing emails...
+                  Analyzing emails against your deletion rules...
                 </span>
               </div>
-              {status.totalEmails && (
-                <>
-                  <Progress value={progress} className='w-full' />
-                  <p className='text-sm text-gray-600'>
-                    Processed {status.processedEmails || 0} of{' '}
-                    {status.totalEmails} emails
-                  </p>
-                </>
-              )}
+              <p className='text-sm text-gray-600'>
+                This may take a few moments depending on the number of emails in your account
+              </p>
             </div>
           )}
 
@@ -156,7 +150,7 @@ export function DryRunStatus({ accountId }: { accountId: string }) {
             <div className='space-y-4'>
               <div className='flex items-center gap-2 text-green-600'>
                 <CheckCircle className='h-5 w-5' />
-                <span className='font-medium'>Dry run completed</span>
+                <span className='font-medium'>Analysis complete</span>
               </div>
 
               {status.markedCount !== undefined && (

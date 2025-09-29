@@ -61,6 +61,23 @@ export async function scheduleIncrementalSync(
   });
 }
 
+export async function scheduleAutoDelete(
+  accountId: string,
+  options?: { runAt?: Date; priority?: number }
+) {
+  const utils = await getWorkerUtils();
+
+  const jobPayload = {
+    accountId,
+  };
+
+  return await utils.addJob('email:auto_delete', jobPayload, {
+    ...options,
+    jobKey: `email:auto_delete:${accountId}`,
+    maxAttempts: 3,
+  });
+}
+
 export async function addJob(
   taskIdentifier: string,
   payload: Record<string, unknown>,

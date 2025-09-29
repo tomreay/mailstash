@@ -63,42 +63,71 @@ export async function performAutoDelete(
     settings.deleteOnlyArchived
   );
 
-  const emailsToProcess: {
-      id: string,
-      markedForDeletion: boolean,
-      gmailId: string | null
-    }[] = await db.email.findMany({
-    where: whereClause,
-    select: {
-      id: true,
-      gmailId: true,
-      markedForDeletion: true,
-    },
-    take: JOB_CONFIG.autoDelete.batchSize,
-  });
+  // Process in batches for both modes to avoid memory issues
+  let totalProcessed = 0;
+  let hasMore = true;
+  let offset = 0;
+
+  while (hasMore) {
+    const emailBatch = await db.email.findMany({
+      where: whereClause,
+      select: {
+        id: true,
+        gmailId: true,
+        markedForDeletion: true,
+      },
+      take: JOB_CONFIG.autoDelete.batchSize,
+      skip: offset,
+    });
+
+    if (emailBatch.length === 0) {
+      hasMore = false;
+      break;
+    }
+
+    logger?.log(
+      `[auto-delete] Processing batch of ${emailBatch.length} emails (offset: ${offset})`
+    );
+
+    // Process based on mode
+    let result: AutoDeleteResult;
+    if (settings.autoDeleteMode === 'dry-run') {
+      result = await processDryRun(emailBatch, logger);
+    } else if (settings.autoDeleteMode === 'on') {
+      result = await processLiveDeletion(emailBatch, account, logger);
+    } else {
+      result = {
+        success: true,
+        count: 0,
+        mode: settings.autoDeleteMode,
+      };
+    }
+
+    totalProcessed += result.count;
+
+    // If we got an error in live mode, stop processing
+    if (!result.success && settings.autoDeleteMode === 'on') {
+      return {
+        ...result,
+        count: totalProcessed,
+      };
+    }
+
+    // Check if there are more emails to process
+    if (emailBatch.length < JOB_CONFIG.autoDelete.batchSize) {
+      hasMore = false;
+    } else {
+      offset += JOB_CONFIG.autoDelete.batchSize;
+    }
+  }
 
   logger?.log(
-    `[auto-delete] Found ${emailsToProcess.length} emails to process for account ${account.id}`
+    `[auto-delete] Completed processing. Total processed: ${totalProcessed}`
   );
-
-  if (emailsToProcess.length === 0) {
-    return {
-      success: true,
-      count: 0,
-      mode: settings.autoDeleteMode,
-    };
-  }
-
-  // Process based on mode
-  if (settings.autoDeleteMode === 'dry-run') {
-    return processDryRun(emailsToProcess, logger);
-  } else if (settings.autoDeleteMode === 'on') {
-    return processLiveDeletion(emailsToProcess, account, logger);
-  }
 
   return {
     success: true,
-    count: 0,
+    count: totalProcessed,
     mode: settings.autoDeleteMode,
   };
 }
@@ -116,7 +145,7 @@ function buildDeleteWhereClause(
   if (deleteDelayHours !== null) {
     const delayDate = new Date(now.getTime() - deleteDelayHours * 60 * 60 * 1000);
     dateConditions.push({
-      syncedAt: { lte: delayDate },
+      createdAt: { lte: delayDate },
     });
   }
 

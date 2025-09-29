@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { AccountsService } from '@/lib/services/accounts.service';
 import { toClientSettings } from '@/lib/types/account-settings';
-import { addJob } from '@/lib/jobs/queue';
+import { scheduleAutoDelete } from '@/lib/jobs/queue';
+import { JOB_CONFIG } from '@/lib/jobs/config';
 
 export async function PUT(
   request: Request,
@@ -29,7 +30,10 @@ export async function PUT(
     if (body.autoDeleteMode === 'dry-run') {
       // Mode changed to dry-run, trigger the job
       try {
-        await addJob('auto-delete', { accountId: id });
+        await scheduleAutoDelete(id, {
+          runAt: new Date(Date.now() + JOB_CONFIG.autoDelete.minDelay),
+          priority: JOB_CONFIG.priorities.autoDelete
+        });
         dryRunTriggered = true;
       } catch (error) {
         console.error('Failed to trigger dry-run job:', error);

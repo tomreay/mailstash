@@ -36,6 +36,32 @@ export async function GET(
       'auto_delete'
     );
 
+    // Check if there's a queued job that hasn't started yet
+    const hasQueuedJob = await JobStatusService.getQueuedJob(accountId, 'auto_delete');
+
+    // Debug logging
+    console.log('[dry-run-status] Current job status:', {
+      accountId,
+      status: currentStatus.status,
+      hasQueuedJob,
+      lastRunAt: currentStatus.lastRunAt,
+      metadata: currentStatus.metadata,
+      error: currentStatus.error,
+    });
+
+    // If there's a queued job, show pending status (don't show old results)
+    if (hasQueuedJob) {
+      return NextResponse.json({
+        status: 'pending',
+        startedAt: null,
+        completedAt: null,
+        totalEmails: 0,
+        processedEmails: 0,
+        markedCount: 0,
+        error: null,
+      });
+    }
+
     // Count marked emails (this is the source of truth for results)
     const markedCount = await db.email.count({
       where: {
@@ -43,6 +69,8 @@ export async function GET(
         markedForDeletion: true,
       },
     });
+
+    console.log('[dry-run-status] Marked email count:', markedCount);
 
     // If no job history and no marked emails, return null status
     if (currentStatus.status === 'never_run' && markedCount === 0) {
@@ -59,13 +87,31 @@ export async function GET(
 
     // Get metadata from job status
     const metadata = currentStatus.metadata || {};
-    const totalEmails = (metadata as { totalEmails: number })?.totalEmails || markedCount;
-    const processedEmails = (metadata as { count: number })?.count || markedCount;
+
+    // For dry run, we need to calculate the actual numbers differently
+    let totalEmails = 0;
+    let processedEmails = 0;
+
+    if (currentStatus.status === 'running') {
+      // During processing, we don't have accurate progress tracking
+      // Show indeterminate progress instead of misleading numbers
+      totalEmails = 0; // This will hide the progress bar
+      processedEmails = 0;
+    } else if (currentStatus.status === 'idle' && metadata) {
+      // After completion, use the final count
+      totalEmails = (metadata as { count?: number })?.count || markedCount;
+      processedEmails = totalEmails;
+    } else {
+      // Default case
+      totalEmails = markedCount;
+      processedEmails = markedCount;
+    }
 
     return NextResponse.json({
-      status: currentStatus.status === 'running' ? 'processing' :
+      status: currentStatus.status === 'running' ? 'running' :
               currentStatus.status === 'error' ? 'failed' :
-              currentStatus.status === 'idle' ? 'completed' : null,
+              currentStatus.status === 'idle' ? 'completed' :
+              currentStatus.status === 'never_run' ? 'pending' : 'pending',
       startedAt: currentStatus.lastRunAt?.toISOString() || null,
       completedAt: currentStatus.status === 'idle' ? currentStatus.lastRunAt?.toISOString() : null,
       totalEmails,

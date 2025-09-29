@@ -39,7 +39,7 @@ export default async function DryRunPage({
             Auto-Delete Dry Run
           </h2>
           <p className='mt-2 text-gray-600'>
-            Test your auto-delete rules without actually deleting any emails
+            Preview which emails would be deleted by your auto-delete rules (no emails will be deleted)
           </p>
         </div>
 
