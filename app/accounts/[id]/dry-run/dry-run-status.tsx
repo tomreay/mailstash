@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { CheckCircle, Clock, Loader2, Trash2, AlertCircle } from 'lucide-react';
@@ -13,10 +13,8 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Progress } from '@/components/ui/progress';
-import { usePolling } from '@/hooks/use-polling';
 import { confirmAction } from '@/lib/utils/confirm';
-import { POLLING_INTERVAL } from '@/lib/constants/settings';
+import { useQuery } from '@tanstack/react-query';
 
 interface DryRunStatusData {
   status: 'pending' | 'running' | 'completed' | 'failed';
@@ -28,45 +26,40 @@ interface DryRunStatusData {
   error?: string;
 }
 
+async function fetchDryRunStatus(accountId: string): Promise<DryRunStatusData> {
+  const res = await fetch(`/api/accounts/${accountId}/dry-run-status`);
+  if (!res.ok) {
+    if (res.status === 401) {
+      throw new Error('Unauthorized');
+    }
+    throw new Error('Failed to fetch dry-run status');
+  }
+  return res.json();
+}
+
 export function DryRunStatus({ accountId }: { accountId: string }) {
   const router = useRouter();
-  const [status, setStatus] = useState<DryRunStatusData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [localError, setLocalError] = useState<string | null>(null);
 
-  const fetchStatus = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/accounts/${accountId}/dry-run-status`);
-      if (!res.ok) {
-        if (res.status === 401) {
-          router.push('/auth/signin');
-          return;
-        }
-        throw new Error('Failed to fetch dry-run status');
+  const { data: status, error, isLoading } = useQuery({
+    queryKey: ['dry-run-status', accountId],
+    queryFn: () => fetchDryRunStatus(accountId),
+    // Refetch every 2 seconds when status is running or pending
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      if (data?.status === 'running' || data?.status === 'pending') {
+        return 2000; // 2 seconds
       }
-
-      const data = await res.json();
-      setStatus(data);
-      setError(null);
-    } catch (err) {
-      console.error('Error fetching dry-run status:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load status');
-    } finally {
-      setLoading(false);
-    }
-  }, [accountId, router]);
-
-  useEffect(() => {
-    void fetchStatus();
-  }, [fetchStatus]);
-
-  const shouldPoll =
-    status?.status === 'running' || status?.status === 'pending';
-
-  usePolling({
-    enabled: shouldPoll,
-    interval: POLLING_INTERVAL,
-    onPoll: fetchStatus,
+      return false; // Don't refetch when completed or failed
+    },
+    retry: (failureCount, error) => {
+      // Don't retry on auth errors
+      if (error instanceof Error && error.message === 'Unauthorized') {
+        router.push('/auth/signin');
+        return false;
+      }
+      return failureCount < 3;
+    },
   });
 
   const handleConfirmAutoDelete = async () => {
@@ -83,19 +76,19 @@ export function DryRunStatus({ accountId }: { accountId: string }) {
       });
 
       if (!res.ok) {
-        setError('Failed to enable auto-delete');
+        setLocalError('Failed to enable auto-delete');
         return;
       }
 
       router.push(`/accounts/${accountId}/settings`);
     } catch (err) {
-      setError(
+      setLocalError(
         err instanceof Error ? err.message : 'Failed to enable auto-delete'
       );
     }
   };
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className='flex items-center justify-center py-12'>
         <Loader2 className='h-8 w-8 animate-spin text-gray-400' />
@@ -103,18 +96,15 @@ export function DryRunStatus({ accountId }: { accountId: string }) {
     );
   }
 
-  const progress =
-    status?.totalEmails && status?.processedEmails
-      ? (status.processedEmails / status.totalEmails) * 100
-      : 0;
+  const displayError = localError || (error instanceof Error ? error.message : null);
 
   return (
     <>
-      {error && (
+      {displayError && (
         <Alert variant='destructive' className='mb-6'>
           <AlertCircle className='h-4 w-4' />
           <AlertTitle>Error</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
+          <AlertDescription>{displayError}</AlertDescription>
         </Alert>
       )}
 
