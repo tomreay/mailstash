@@ -162,7 +162,7 @@ function buildDeleteWhereClause(
     accountId,
     isDeleted: false, // Don't process already deleted emails
     ...(deleteOnlyArchived && { isArchived: true }),
-    ...(dateConditions.length > 0 && { OR: dateConditions }),
+    ...(dateConditions.length > 0 && { AND: dateConditions }),
   };
 }
 

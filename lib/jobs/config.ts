@@ -26,7 +26,7 @@ export const JOB_CONFIG = {
     initialDelay: 1000,
   },
   autoDelete: {
-    batchSize: 100,
+    batchSize: 1000,
     minDelay: 60 * 1000, // 1 minute after sync
   },
   thresholds: {
