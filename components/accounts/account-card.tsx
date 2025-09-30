@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Settings, ChevronRight } from 'lucide-react';
+import { Settings, ChevronRight, RefreshCw } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -61,12 +61,39 @@ export function AccountCard({ account }: AccountCardProps) {
       </Link>
 
       <CardContent className='pt-0'>
+        {/* Inactive Warning with Reconnect Button */}
+        {!account.isActive && account.provider === 'gmail' && (
+          <div className='mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg'>
+            <div className='flex items-start gap-2'>
+              <div className='flex-1'>
+                <p className='text-sm font-medium text-yellow-800'>
+                  Account Disconnected
+                </p>
+                <p className='text-xs text-yellow-700 mt-1'>
+                  Reconnect your account to resume syncing
+                </p>
+              </div>
+            </div>
+            <Link href='/api/auth/gmail?action=connect' className='block mt-2'>
+              <Button
+                variant='default'
+                size='sm'
+                className='w-full bg-yellow-600 hover:bg-yellow-700'
+              >
+                <RefreshCw className='h-4 w-4 mr-2' />
+                Reconnect Account
+              </Button>
+            </Link>
+          </div>
+        )}
+
         {/* Actions */}
         <div className='flex gap-2 pt-2'>
           {account.provider !== 'archive' && (
             <SyncButton
               accountId={account.id}
               isSyncing={account.syncStatus === 'syncing'}
+              disabled={!account.isActive}
             />
           )}
           <Link
@@ -84,8 +111,8 @@ export function AccountCard({ account }: AccountCardProps) {
           </Link>
         </div>
 
-        {/* Inactive Badge */}
-        {!account.isActive && (
+        {/* Inactive Badge for non-Gmail accounts */}
+        {!account.isActive && account.provider !== 'gmail' && (
           <Badge variant='outline' className='w-full justify-center mt-4'>
             Account Disabled
           </Badge>

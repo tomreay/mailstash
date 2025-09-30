@@ -116,6 +116,7 @@ export async function GET(request: NextRequest) {
           expiresAt: tokens.expires_in
             ? new Date(Date.now() + tokens.expires_in * 1000)
             : null,
+          isActive: true, // Re-enable account on reconnection
           userId: session.user.id,
         },
         create: {
@@ -129,6 +130,7 @@ export async function GET(request: NextRequest) {
             : null,
           gmailId: googleUser.id,
           userId: session.user.id,
+          isActive: true,
         },
       });
 

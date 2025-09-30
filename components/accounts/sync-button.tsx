@@ -8,11 +8,13 @@ import { Button } from '@/components/ui/button';
 interface SyncButtonProps {
   accountId: string;
   isSyncing: boolean;
+  disabled?: boolean;
 }
 
 export function SyncButton({
   accountId,
   isSyncing: initialSyncing,
+  disabled = false,
 }: SyncButtonProps) {
   const router = useRouter();
   const [isSyncing, setIsSyncing] = useState(initialSyncing);
@@ -46,7 +48,7 @@ export function SyncButton({
       size='sm'
       className='flex-1'
       onClick={handleSync}
-      disabled={isSyncing}
+      disabled={isSyncing || disabled}
     >
       {isSyncing ? (
         <Loader2 className='h-4 w-4 mr-2 animate-spin' />
