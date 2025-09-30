@@ -1,156 +1,107 @@
 import { google, gmail_v1 } from 'googleapis';
-import { OAuth2Client } from 'google-auth-library';
 import {
   EmailMessage,
   EmailAccount,
   EmailFolder,
   EmailAttachment,
 } from '@/types/email';
-import { db } from '@/lib/db';
 import { retryGmailOperation } from '@/lib/utils/retry';
-
-interface GoogleApiError extends Error {
-  code?: number;
-}
-
-function isGoogleApiError(error: unknown): error is GoogleApiError {
-  return error instanceof Error && 'code' in error;
-}
+import { GmailTokenManager } from '@/lib/services/gmail-token-manager';
 
 export class GmailClient {
-  private readonly oauth2Client: OAuth2Client;
-  private gmail: gmail_v1.Gmail;
+  private tokenManager: GmailTokenManager;
+  private gmail: gmail_v1.Gmail | null = null;
 
   constructor(private account: EmailAccount) {
-    this.oauth2Client = new google.auth.OAuth2(
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_SECRET,
-      process.env.NEXTAUTH_URL + '/api/auth/callback/google'
-    );
-
-    this.oauth2Client.setCredentials({
-      access_token: account.accessToken,
-      refresh_token: account.refreshToken,
-      expiry_date: account.expiresAt?.getTime(),
-    });
-
-    this.gmail = google.gmail({ version: 'v1', auth: this.oauth2Client });
+    this.tokenManager = new GmailTokenManager(account);
   }
 
-  async refreshAccessToken() {
-    try {
-      const { credentials } = await this.oauth2Client.refreshAccessToken();
-
-      // Update the email account with new tokens
-      await db.emailAccount.update({
-        where: { id: this.account.id },
-        data: {
-          accessToken: credentials.access_token,
-          refreshToken: credentials.refresh_token,
-          expiresAt: credentials.expiry_date
-            ? new Date(credentials.expiry_date)
-            : null,
-        },
-      });
-
-      this.oauth2Client.setCredentials(credentials);
-      return credentials;
-    } catch (error) {
-      console.error('Error refreshing access token:', error);
-      throw error;
+  /**
+   * Initialize the Gmail API client with valid tokens
+   */
+  private async initializeGmail(): Promise<gmail_v1.Gmail> {
+    if (!this.gmail) {
+      const oauth2Client = await this.tokenManager.getValidClient();
+      this.gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+    } else {
+      // Ensure token is still valid
+      await this.tokenManager.getValidClient();
     }
+    return this.gmail;
   }
 
   async getLabels(): Promise<EmailFolder[]> {
-    try {
-      const response = await retryGmailOperation(
-        () => this.gmail.users.labels.list({ userId: 'me' }),
-        'getLabels',
-        { accountId: this.account.id }
-      );
+    const gmail = await this.initializeGmail();
 
-      return (response.data.labels || []).map(
-        (label: gmail_v1.Schema$Label) => ({
-          id: label.id || '',
-          name: label.name || '',
-          path: label.name || '',
-          accountId: this.account.id,
-          gmailLabelId: label.id || undefined,
-        })
-      );
-    } catch (error) {
-      if (isGoogleApiError(error) && error.code === 401) {
-        await this.refreshAccessToken();
-        return this.getLabels();
-      }
-      throw error;
-    }
+    const response = await retryGmailOperation(
+      () => gmail.users.labels.list({ userId: 'me' }),
+      'getLabels',
+      { accountId: this.account.id }
+    );
+
+    return (response.data.labels || []).map(
+      (label: gmail_v1.Schema$Label) => ({
+        id: label.id || '',
+        name: label.name || '',
+        path: label.name || '',
+        accountId: this.account.id,
+        gmailLabelId: label.id || undefined,
+      })
+    );
   }
 
   async getMessagesList(
     maxResults: number,
     pageToken?: string
   ): Promise<{ messages: gmail_v1.Schema$Message[]; nextPageToken?: string }> {
-    try {
-      const response = await retryGmailOperation(
-        () => this.gmail.users.messages.list({
-          userId: 'me',
-          maxResults,
-          pageToken,
-          // Exclude SPAM and TRASH messages from sync
-          q: '-in:spam -in:trash',
-        }),
-        'getMessagesList',
-        { accountId: this.account.id, pageToken, maxResults }
-      );
+    const gmail = await this.initializeGmail();
 
-      return {
-        messages: response.data.messages || [],
-        nextPageToken: response.data.nextPageToken || undefined,
-      };
-    } catch (error) {
-      if (isGoogleApiError(error) && error.code === 401) {
-        await this.refreshAccessToken();
-        return this.getMessagesList(maxResults, pageToken);
-      }
-      throw error;
-    }
+    const response = await retryGmailOperation(
+      () => gmail.users.messages.list({
+        userId: 'me',
+        maxResults,
+        pageToken,
+        // Exclude SPAM and TRASH messages from sync
+        q: '-in:spam -in:trash',
+      }),
+      'getMessagesList',
+      { accountId: this.account.id, pageToken, maxResults }
+    );
+
+    return {
+      messages: response.data.messages || [],
+      nextPageToken: response.data.nextPageToken || undefined,
+    };
   }
 
   async getMessages(
     maxResults: number,
     pageToken?: string
   ): Promise<{ messages: EmailMessage[]; nextPageToken?: string }> {
-    try {
-      const response = await retryGmailOperation(
-        () => this.gmail.users.messages.list({
-          userId: 'me',
-          maxResults,
-          pageToken,
-          // Exclude SPAM and TRASH messages from sync
-          q: '-in:spam -in:trash',
-        }),
-        'getMessages',
-        { accountId: this.account.id, pageToken, maxResults }
-      );
+    const gmail = await this.initializeGmail();
 
-      const messages = await Promise.all(
-        response.data.messages?.map((msg: gmail_v1.Schema$Message) =>
-          this.getMessageDetails(msg.id!)
-        ) || []
-      );
+    const response = await retryGmailOperation(
+      () => gmail.users.messages.list({
+        userId: 'me',
+        maxResults,
+        pageToken,
+        // Exclude SPAM and TRASH messages from sync
+        q: '-in:spam -in:trash',
+      }),
+      'getMessages',
+      { accountId: this.account.id, pageToken, maxResults }
+    );
 
-      return {
-        messages: messages.filter((msg): msg is EmailMessage => msg !== null),
-        nextPageToken: response.data.nextPageToken || undefined,
-      };
-    } catch (error) {
-      if (isGoogleApiError(error) && error.code === 401) {
-        await this.refreshAccessToken();
-        return this.getMessages(maxResults, pageToken);
-      }
-      throw error;
-    }
+    const messages = await Promise.all(
+      response.data.messages?.map((msg: gmail_v1.Schema$Message) =>
+        this.getMessageDetails(msg.id!)
+      ) || []
+    );
+
+    return {
+      messages: messages.filter((msg): msg is EmailMessage => msg !== null),
+      nextPageToken: response.data.nextPageToken || undefined,
+    };
   }
 
   async getMessagesBatch(
@@ -159,6 +110,7 @@ export class GmailClient {
     messages: EmailMessage[];
     failures: Array<{ messageId: string; error: string }>
   }> {
+    const gmail = await this.initializeGmail();
     const messages: EmailMessage[] = [];
     const failures: Array<{ messageId: string; error: string }> = [];
 
@@ -174,7 +126,7 @@ export class GmailClient {
           chunk.map(async (messageId) => {
             try {
               const response = await retryGmailOperation(
-                () => this.gmail.users.messages.get({
+                () => gmail.users.messages.get({
                   userId: 'me',
                   id: messageId,
                   format: 'full',
@@ -284,8 +236,10 @@ export class GmailClient {
 
   async getMessageDetails(messageId: string): Promise<EmailMessage | null> {
     try {
+      const gmail = await this.initializeGmail();
+
       const response = await retryGmailOperation(
-        () => this.gmail.users.messages.get({
+        () => gmail.users.messages.get({
           userId: 'me',
           id: messageId,
           format: 'full',
@@ -350,25 +304,19 @@ export class GmailClient {
   }
 
   async getRawMessage(messageId: string): Promise<string> {
-    try {
-      const response = await retryGmailOperation(
-        () => this.gmail.users.messages.get({
-          userId: 'me',
-          id: messageId,
-          format: 'raw',
-        }),
-        'getRawMessage',
-        { messageId }
-      );
+    const gmail = await this.initializeGmail();
 
-      return Buffer.from(response.data.raw || '', 'base64').toString();
-    } catch (error) {
-      if (isGoogleApiError(error) && error.code === 401) {
-        await this.refreshAccessToken();
-        return this.getRawMessage(messageId);
-      }
-      throw error;
-    }
+    const response = await retryGmailOperation(
+      () => gmail.users.messages.get({
+        userId: 'me',
+        id: messageId,
+        format: 'raw',
+      }),
+      'getRawMessage',
+      { messageId }
+    );
+
+    return Buffer.from(response.data.raw || '', 'base64').toString();
   }
 
   private extractMessageContent(payload: gmail_v1.Schema$MessagePart): {
@@ -420,6 +368,7 @@ export class GmailClient {
     messageId: string,
     payload: gmail_v1.Schema$MessagePart
   ): Promise<EmailAttachment[]> {
+    const gmail = await this.initializeGmail();
     const attachments: EmailAttachment[] = [];
 
     const extractParts = async (parts: gmail_v1.Schema$MessagePart[]) => {
@@ -432,7 +381,7 @@ export class GmailClient {
           try {
             // Download the attachment
             const attachmentResponse =
-              await this.gmail.users.messages.attachments.get({
+              await gmail.users.messages.attachments.get({
                 userId: 'me',
                 messageId,
                 id: part.body.attachmentId,
@@ -476,147 +425,129 @@ export class GmailClient {
     labelsAdded: Map<string, string[]>;
     labelsRemoved: Map<string, string[]>;
   }> {
-    try {
-      const response = await retryGmailOperation(
-        () => this.gmail.users.history.list({
-          userId: 'me',
-          startHistoryId,
-          maxResults,
-          historyTypes: [
-            'messageAdded',
-            'messageDeleted',
-            'labelAdded',
-            'labelRemoved',
-          ],
-        }),
-        'getHistory',
-        { startHistoryId, maxResults }
-      );
+    const gmail = await this.initializeGmail();
 
-      if (!response.data.history) {
-        return {
-          history: [],
-          historyId: response.data.historyId || startHistoryId,
-          messagesAdded: [],
-          messagesDeleted: [],
-          labelsAdded: new Map(),
-          labelsRemoved: new Map(),
-        };
-      }
+    const response = await retryGmailOperation(
+      () => gmail.users.history.list({
+        userId: 'me',
+        startHistoryId,
+        maxResults,
+        historyTypes: [
+          'messageAdded',
+          'messageDeleted',
+          'labelAdded',
+          'labelRemoved',
+        ],
+      }),
+      'getHistory',
+      { startHistoryId, maxResults }
+    );
 
-      const messagesAdded = new Set<string>();
-      const messagesDeleted = new Set<string>();
-      const labelsAdded = new Map<string, Set<string>>();
-      const labelsRemoved = new Map<string, Set<string>>();
-
-      for (const historyItem of response.data.history) {
-        // Process added messages
-        if (historyItem.messagesAdded) {
-          for (const msg of historyItem.messagesAdded) {
-            if (msg.message?.id) {
-              messagesAdded.add(msg.message.id);
-            }
-          }
-        }
-
-        // Process deleted messages
-        if (historyItem.messagesDeleted) {
-          for (const msg of historyItem.messagesDeleted) {
-            if (msg.message?.id) {
-              messagesDeleted.add(msg.message.id);
-            }
-          }
-        }
-
-        // Process added labels
-        if (historyItem.labelsAdded) {
-          for (const labelChange of historyItem.labelsAdded) {
-            if (labelChange.message?.id && labelChange.labelIds) {
-              const messageId = labelChange.message.id;
-              if (!labelsAdded.has(messageId)) {
-                labelsAdded.set(messageId, new Set());
-              }
-              labelChange.labelIds.forEach(labelId =>
-                labelsAdded.get(messageId)!.add(labelId)
-              );
-            }
-          }
-        }
-
-        // Process removed labels
-        if (historyItem.labelsRemoved) {
-          for (const labelChange of historyItem.labelsRemoved) {
-            if (labelChange.message?.id && labelChange.labelIds) {
-              const messageId = labelChange.message.id;
-              if (!labelsRemoved.has(messageId)) {
-                labelsRemoved.set(messageId, new Set());
-              }
-              labelChange.labelIds.forEach(labelId =>
-                labelsRemoved.get(messageId)!.add(labelId)
-              );
-            }
-          }
-        }
-      }
-
+    if (!response.data.history) {
       return {
-        history: response.data.history,
+        history: [],
         historyId: response.data.historyId || startHistoryId,
-        messagesAdded: Array.from(messagesAdded),
-        messagesDeleted: Array.from(messagesDeleted),
-        labelsAdded: new Map(
-          Array.from(labelsAdded.entries()).map(([k, v]) => [k, Array.from(v)])
-        ),
-        labelsRemoved: new Map(
-          Array.from(labelsRemoved.entries()).map(([k, v]) => [
-            k,
-            Array.from(v),
-          ])
-        ),
+        messagesAdded: [],
+        messagesDeleted: [],
+        labelsAdded: new Map(),
+        labelsRemoved: new Map(),
       };
-    } catch (error) {
-      if (isGoogleApiError(error) && error.code === 401) {
-        await this.refreshAccessToken();
-        return this.getHistory(startHistoryId, maxResults);
-      }
-      throw error;
     }
+
+    const messagesAdded = new Set<string>();
+    const messagesDeleted = new Set<string>();
+    const labelsAdded = new Map<string, Set<string>>();
+    const labelsRemoved = new Map<string, Set<string>>();
+
+    for (const historyItem of response.data.history) {
+      // Process added messages
+      if (historyItem.messagesAdded) {
+        for (const msg of historyItem.messagesAdded) {
+          if (msg.message?.id) {
+            messagesAdded.add(msg.message.id);
+          }
+        }
+      }
+
+      // Process deleted messages
+      if (historyItem.messagesDeleted) {
+        for (const msg of historyItem.messagesDeleted) {
+          if (msg.message?.id) {
+            messagesDeleted.add(msg.message.id);
+          }
+        }
+      }
+
+      // Process added labels
+      if (historyItem.labelsAdded) {
+        for (const labelChange of historyItem.labelsAdded) {
+          if (labelChange.message?.id && labelChange.labelIds) {
+            const messageId = labelChange.message.id;
+            if (!labelsAdded.has(messageId)) {
+              labelsAdded.set(messageId, new Set());
+            }
+            labelChange.labelIds.forEach(labelId =>
+              labelsAdded.get(messageId)!.add(labelId)
+            );
+          }
+        }
+      }
+
+      // Process removed labels
+      if (historyItem.labelsRemoved) {
+        for (const labelChange of historyItem.labelsRemoved) {
+          if (labelChange.message?.id && labelChange.labelIds) {
+            const messageId = labelChange.message.id;
+            if (!labelsRemoved.has(messageId)) {
+              labelsRemoved.set(messageId, new Set());
+            }
+            labelChange.labelIds.forEach(labelId =>
+              labelsRemoved.get(messageId)!.add(labelId)
+            );
+          }
+        }
+      }
+    }
+
+    return {
+      history: response.data.history,
+      historyId: response.data.historyId || startHistoryId,
+      messagesAdded: Array.from(messagesAdded),
+      messagesDeleted: Array.from(messagesDeleted),
+      labelsAdded: new Map(
+        Array.from(labelsAdded.entries()).map(([k, v]) => [k, Array.from(v)])
+      ),
+      labelsRemoved: new Map(
+        Array.from(labelsRemoved.entries()).map(([k, v]) => [
+          k,
+          Array.from(v),
+        ])
+      ),
+    };
   }
 
   async getProfile(): Promise<{ emailAddress: string; historyId: string }> {
-    try {
-      const response = await retryGmailOperation(
-        () => this.gmail.users.getProfile({ userId: 'me' }),
-        'getProfile',
-        { accountId: this.account.id }
-      );
+    const gmail = await this.initializeGmail();
 
-      return {
-        emailAddress: response.data.emailAddress || '',
-        historyId: response.data.historyId || '',
-      };
-    } catch (error) {
-      if (isGoogleApiError(error) && error.code === 401) {
-        await this.refreshAccessToken();
-        return this.getProfile();
-      }
-      throw error;
-    }
+    const response = await retryGmailOperation(
+      () => gmail.users.getProfile({ userId: 'me' }),
+      'getProfile',
+      { accountId: this.account.id }
+    );
+
+    return {
+      emailAddress: response.data.emailAddress || '',
+      historyId: response.data.historyId || '',
+    };
   }
 
   async deleteMessage(messageId: string): Promise<void> {
-    try {
-      // Move message to trash (doesn't permanently delete)
-      await this.gmail.users.messages.trash({
-        userId: 'me',
-        id: messageId,
-      });
-    } catch (error) {
-      if (isGoogleApiError(error) && error.code === 401) {
-        await this.refreshAccessToken();
-        return this.deleteMessage(messageId);
-      }
-      throw error;
-    }
+    const gmail = await this.initializeGmail();
+
+    // Move message to trash (doesn't permanently delete)
+    await gmail.users.messages.trash({
+      userId: 'me',
+      id: messageId,
+    });
   }
 }

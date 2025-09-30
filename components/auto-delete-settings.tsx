@@ -33,7 +33,7 @@ interface AutoDeleteSettingsProps {
   deleteDelayHours: number | null;
   deleteAgeMonths: number | null;
   deleteOnlyArchived: boolean;
-  dryRunStatus: DryRunStatus | null;
+  dryRunStatus?: DryRunStatus;
   isLoading?: boolean;
   onModeChange: (mode: AutoDeleteMode) => void;
   onDelayChange: (hours: number | null) => void;

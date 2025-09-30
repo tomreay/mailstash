@@ -20,7 +20,7 @@ interface SettingsTabsProps {
     provider: string;
     lastSyncAt: string | null;
   };
-  dryRunStatus: DryRunStatus | null;
+  dryRunStatus?: DryRunStatus;
   isDryRunLoading: boolean;
   saving: boolean;
   accountId: string;

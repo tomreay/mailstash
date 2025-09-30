@@ -14,33 +14,13 @@ import {
 } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { confirmAction } from '@/lib/utils/confirm';
-import { useQuery } from '@tanstack/react-query';
-import { fetchDryRunStatus } from '@/lib/api/dry-run';
+import { useDryRunStatus } from '@/hooks/use-dry-run-status';
 
 export function DryRunStatus({ accountId }: { accountId: string }) {
   const router = useRouter();
   const [localError, setLocalError] = useState<string | null>(null);
 
-  const { data: status, error, isLoading } = useQuery({
-    queryKey: ['dry-run-status', accountId],
-    queryFn: () => fetchDryRunStatus(accountId),
-    // Refetch every 2 seconds when status is running or pending
-    refetchInterval: (query) => {
-      const data = query.state.data;
-      if (data?.status === 'running' || data?.status === 'pending') {
-        return 2000; // 2 seconds
-      }
-      return false; // Don't refetch when completed or failed
-    },
-    retry: (failureCount, error) => {
-      // Don't retry on auth errors
-      if (error instanceof Error && error.message === 'Unauthorized') {
-        router.push('/auth/signin');
-        return false;
-      }
-      return failureCount < 3;
-    },
-  });
+  const { dryRunStatus: status, error, isLoading } = useDryRunStatus(accountId);
 
   const handleConfirmAutoDelete = async () => {
     const confirmed = confirmAction(
@@ -76,7 +56,7 @@ export function DryRunStatus({ accountId }: { accountId: string }) {
     );
   }
 
-  const displayError = localError || (error instanceof Error ? error.message : null);
+  const displayError = localError || error;
 
   return (
     <>
