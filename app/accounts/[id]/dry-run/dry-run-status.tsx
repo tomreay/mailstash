@@ -15,27 +15,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { confirmAction } from '@/lib/utils/confirm';
 import { useQuery } from '@tanstack/react-query';
-
-interface DryRunStatusData {
-  status: 'pending' | 'running' | 'completed' | 'failed';
-  startedAt?: string;
-  completedAt?: string;
-  totalEmails?: number;
-  processedEmails?: number;
-  markedCount?: number;
-  error?: string;
-}
-
-async function fetchDryRunStatus(accountId: string): Promise<DryRunStatusData> {
-  const res = await fetch(`/api/accounts/${accountId}/dry-run-status`);
-  if (!res.ok) {
-    if (res.status === 401) {
-      throw new Error('Unauthorized');
-    }
-    throw new Error('Failed to fetch dry-run status');
-  }
-  return res.json();
-}
+import { fetchDryRunStatus } from '@/lib/api/dry-run';
 
 export function DryRunStatus({ accountId }: { accountId: string }) {
   const router = useRouter();

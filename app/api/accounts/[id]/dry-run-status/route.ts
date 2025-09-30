@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
-import { JobStatusService } from '@/lib/services/job-status.service';
+import { JobStatusService, AutoDeleteJobMetadata } from '@/lib/services/job-status.service';
+import { DryRunStatusData } from '@/types/dry-run';
 
 export async function GET(
   _: NextRequest,
@@ -85,40 +86,49 @@ export async function GET(
       });
     }
 
-    // Get metadata from job status
-    const metadata = currentStatus.metadata || {};
+    // Get metadata from job status with proper typing
+    const metadata = (currentStatus.metadata as AutoDeleteJobMetadata) || {};
 
-    // For dry run, we need to calculate the actual numbers differently
-    let totalEmails = 0;
-    let processedEmails = 0;
+    // Map job status to dry run status
+    let status: DryRunStatusData['status'];
+    let completedAt: string | null = null;
 
-    if (currentStatus.status === 'running') {
-      // During processing, we don't have accurate progress tracking
-      // Show indeterminate progress instead of misleading numbers
-      totalEmails = 0; // This will hide the progress bar
-      processedEmails = 0;
-    } else if (currentStatus.status === 'idle' && metadata) {
-      // After completion, use the final count
-      totalEmails = (metadata as { count?: number })?.count || markedCount;
-      processedEmails = totalEmails;
-    } else {
-      // Default case
-      totalEmails = markedCount;
-      processedEmails = markedCount;
+    switch (currentStatus.status) {
+      case 'running':
+        status = 'running';
+        break;
+      case 'error':
+        status = 'failed';
+        break;
+      case 'idle':
+        status = 'completed';
+        completedAt = currentStatus.lastRunAt?.toISOString() || null;
+        break;
+      case 'never_run':
+        // If we've never run but have marked emails, something is inconsistent
+        // Most likely leftover from a previous run
+        status = markedCount > 0 ? 'completed' : null;
+        break;
+      default:
+        status = null;
     }
 
-    return NextResponse.json({
-      status: currentStatus.status === 'running' ? 'running' :
-              currentStatus.status === 'error' ? 'failed' :
-              currentStatus.status === 'idle' ? 'completed' :
-              currentStatus.status === 'never_run' ? 'pending' : 'pending',
+    // For dry run, we don't track granular progress during processing
+    // Progress tracking is not meaningful for this operation
+    const totalEmails = status === 'completed' ? (metadata.count || markedCount) : 0;
+    const processedEmails = status === 'completed' ? totalEmails : 0;
+
+    const response: DryRunStatusData = {
+      status,
       startedAt: currentStatus.lastRunAt?.toISOString() || null,
-      completedAt: currentStatus.status === 'idle' ? currentStatus.lastRunAt?.toISOString() : null,
+      completedAt,
       totalEmails,
       processedEmails,
       markedCount,
       error: currentStatus.error || null,
-    });
+    };
+
+    return NextResponse.json(response);
   } catch (error) {
     console.error('Dry-run status error:', error);
     return NextResponse.json(
