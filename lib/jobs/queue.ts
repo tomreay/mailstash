@@ -1,6 +1,5 @@
 import { makeWorkerUtils, WorkerUtils } from 'graphile-worker';
 import type {
-  FolderSyncPayload,
   FullSyncPayload,
   IncrementalSyncPayload,
 } from './types';
@@ -74,29 +73,6 @@ export async function scheduleAutoDelete(
   return await utils.addJob('email:auto_delete', jobPayload, {
     ...options,
     jobKey: `email:auto_delete:${accountId}`,
-    maxAttempts: 3,
-  });
-}
-
-export async function scheduleFolderSync(
-  accountId: string,
-  folderId: string,
-  folderPath: string,
-  payload?: Partial<FolderSyncPayload>,
-  options?: { runAt?: Date; priority?: number }
-) {
-  const utils = await getWorkerUtils();
-
-  const jobPayload: FolderSyncPayload = {
-    accountId,
-    folderId,
-    folderPath,
-    ...payload,
-  };
-
-  return await utils.addJob('email:folder_sync', jobPayload, {
-    ...options,
-    jobKey: `email:folder_sync:${accountId}:${folderId}`,
     maxAttempts: 3,
   });
 }

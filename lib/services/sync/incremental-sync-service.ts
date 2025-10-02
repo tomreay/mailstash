@@ -102,6 +102,7 @@ async function syncGmailIncremental(
             await storage.storeEmail(message, rawContent, account.id);
             emailsProcessed++;
           }
+          // If message is null, it means no payload - legitimate case, skip silently
         }
       } catch (error) {
         logger?.error(`[incremental-sync] Failed to process message ${messageId}:`, error);

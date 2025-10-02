@@ -346,23 +346,18 @@ export class JobStatusService {
   }
 
   /**
-   * Get all job statuses for an account
+   * Check if a full sync has been completed for an account
    */
-  static async getAccountJobStatuses(accountId: string) {
-    const statuses = await db.jobStatus.findMany({
-      where: { accountId },
-      orderBy: { jobType: 'asc' },
+  static async hasCompletedFullSync(accountId: string): Promise<boolean> {
+    const fullSyncStatus = await db.jobStatus.findUnique({
+      where: {
+        accountId_jobType: {
+          accountId,
+          jobType: 'full_sync',
+        },
+      },
     });
 
-    // Check for active jobs
-    const syncRunning = await this.isJobRunning(accountId, 'sync');
-    const autoDeleteRunning = await this.isJobRunning(accountId, 'auto_delete');
-
-    return statuses.map(status => ({
-      ...status,
-      isRunning:
-        (status.jobType === 'sync' && syncRunning) ||
-        (status.jobType === 'auto_delete' && autoDeleteRunning),
-    }));
+    return fullSyncStatus?.success === true;
   }
 }

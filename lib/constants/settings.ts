@@ -11,6 +11,4 @@ export const AGE_PRESETS = [
   { months: 12, label: '1 year' },
   { months: 18, label: '18 months' },
 ] as const;
-
-export const POLLING_INTERVAL = 2000;
 export const SUCCESS_MESSAGE_DURATION = 3000;

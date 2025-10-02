@@ -41,7 +41,8 @@ export const incrementalSyncHandler = createJobHandler<IncrementalSyncPayload>(
       emailsProcessed: result.emailsProcessed,
       provider: account.provider,
       historyId: result.historyId,
-      failedMessages: result.failedMessages,
+      failedMessageIds: result.failedMessages,
+      failedCount: result.failedMessages?.length || 0,
     };
   }
 );

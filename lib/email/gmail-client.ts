@@ -73,37 +73,7 @@ export class GmailClient {
       nextPageToken: response.data.nextPageToken || undefined,
     };
   }
-
-  async getMessages(
-    maxResults: number,
-    pageToken?: string
-  ): Promise<{ messages: EmailMessage[]; nextPageToken?: string }> {
-    const gmail = await this.initializeGmail();
-
-    const response = await retryGmailOperation(
-      () => gmail.users.messages.list({
-        userId: 'me',
-        maxResults,
-        pageToken,
-        // Exclude SPAM and TRASH messages from sync
-        q: '-in:spam -in:trash',
-      }),
-      'getMessages',
-      { accountId: this.account.id, pageToken, maxResults }
-    );
-
-    const messages = await Promise.all(
-      response.data.messages?.map((msg: gmail_v1.Schema$Message) =>
-        this.getMessageDetails(msg.id!)
-      ) || []
-    );
-
-    return {
-      messages: messages.filter((msg): msg is EmailMessage => msg !== null),
-      nextPageToken: response.data.nextPageToken || undefined,
-    };
-  }
-
+  
   async getMessagesBatch(
     messageIds: string[]
   ): Promise<{
@@ -235,72 +205,67 @@ export class GmailClient {
   }
 
   async getMessageDetails(messageId: string): Promise<EmailMessage | null> {
-    try {
-      const gmail = await this.initializeGmail();
+    const gmail = await this.initializeGmail();
 
-      const response = await retryGmailOperation(
-        () => gmail.users.messages.get({
-          userId: 'me',
-          id: messageId,
-          format: 'full',
-        }),
-        'getMessageDetails',
-        { messageId }
-      );
+    const response = await retryGmailOperation(
+      () => gmail.users.messages.get({
+        userId: 'me',
+        id: messageId,
+        format: 'full',
+      }),
+      'getMessageDetails',
+      { messageId }
+    );
 
-      const message = response.data;
-      if (!message.payload) {
-        return null;
-      }
-
-      const headers = message.payload.headers || [];
-
-      const getHeader = (name: string) =>
-        headers.find(
-          (h: gmail_v1.Schema$MessagePartHeader) =>
-            h.name?.toLowerCase() === name.toLowerCase()
-        )?.value;
-
-      // Parse the message body
-      const { textContent, htmlContent } = this.extractMessageContent(
-        message.payload
-      );
-
-      // Extract attachments
-      const attachments = await this.extractAttachments(
-        messageId,
-        message.payload
-      );
-
-      return {
-        id: message.id || '',
-        messageId: getHeader('Message-ID') || message.id || '',
-        threadId: message.threadId || undefined,
-        subject: getHeader('Subject') || undefined,
-        from: getHeader('From') || '',
-        to: getHeader('To') || '',
-        cc: getHeader('Cc') || undefined,
-        bcc: getHeader('Bcc') || undefined,
-        replyTo: getHeader('Reply-To') || undefined,
-        date: message.internalDate
-          ? new Date(parseInt(message.internalDate))
-          : new Date(),
-        textContent,
-        htmlContent,
-        hasAttachments: this.hasAttachments(message.payload),
-        attachments,
-        labels: message.labelIds || [],
-        size: message.sizeEstimate || 0,
-        isRead: !(message.labelIds || []).includes('UNREAD'),
-        isImportant: (message.labelIds || []).includes('IMPORTANT'),
-        isSpam: (message.labelIds || []).includes('SPAM'),
-        isArchived: !(message.labelIds || []).includes('INBOX'),
-        isDeleted: (message.labelIds || []).includes('TRASH'),
-      };
-    } catch (error) {
-      console.error('Error getting message details:', error);
+    const message = response.data;
+    if (!message.payload) {
       return null;
     }
+
+    const headers = message.payload.headers || [];
+
+    const getHeader = (name: string) =>
+      headers.find(
+        (h: gmail_v1.Schema$MessagePartHeader) =>
+          h.name?.toLowerCase() === name.toLowerCase()
+      )?.value;
+
+    // Parse the message body
+    const { textContent, htmlContent } = this.extractMessageContent(
+      message.payload
+    );
+
+    // Extract attachments
+    const attachments = await this.extractAttachments(
+      messageId,
+      message.payload
+    );
+
+    return {
+      id: message.id || '',
+      messageId: getHeader('Message-ID') || message.id || '',
+      threadId: message.threadId || undefined,
+      subject: getHeader('Subject') || undefined,
+      from: getHeader('From') || '',
+      to: getHeader('To') || '',
+      cc: getHeader('Cc') || undefined,
+      bcc: getHeader('Bcc') || undefined,
+      replyTo: getHeader('Reply-To') || undefined,
+      date: message.internalDate
+        ? new Date(parseInt(message.internalDate))
+        : new Date(),
+      textContent,
+      htmlContent,
+      hasAttachments: this.hasAttachments(message.payload),
+      attachments,
+      labels: message.labelIds || [],
+      size: message.sizeEstimate || 0,
+      isRead: !(message.labelIds || []).includes('UNREAD'),
+      isImportant: (message.labelIds || []).includes('IMPORTANT'),
+      isSpam: (message.labelIds || []).includes('SPAM'),
+      isArchived: !(message.labelIds || []).includes('INBOX'),
+      isDeleted: (message.labelIds || []).includes('TRASH'),
+    };
   }
 
   async getRawMessage(messageId: string): Promise<string> {
@@ -464,7 +429,11 @@ export class GmailClient {
       if (historyItem.messagesAdded) {
         for (const msg of historyItem.messagesAdded) {
           if (msg.message?.id) {
-            messagesAdded.add(msg.message.id);
+            // Skip messages in SPAM or TRASH
+            const labelIds = msg.message.labelIds || [];
+            if (!labelIds.includes('SPAM') && !labelIds.includes('TRASH')) {
+              messagesAdded.add(msg.message.id);
+            }
           }
         }
       }

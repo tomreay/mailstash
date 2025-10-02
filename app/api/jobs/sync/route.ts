@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   scheduleFullSync,
   scheduleIncrementalSync,
-  scheduleFolderSync,
 } from '@/lib/jobs/queue';
 import { db } from '@/lib/db';
 import { auth } from '@/lib/auth';
+import { JobStatusService } from '@/lib/services/job-status.service';
 
 export async function POST(request: NextRequest) {
   const session = await auth();
@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { accountId, type = 'full', folderId, priority } = body;
+    const { accountId } = body;
 
     // Verify the account belongs to the user
     const account = await db.emailAccount.findFirst({
@@ -30,59 +30,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Account not found' }, { status: 404 });
     }
 
+    // Check if a full sync has been completed
+    const hasCompletedFullSync = await JobStatusService.hasCompletedFullSync(accountId);
+
+    // Schedule appropriate sync type based on full sync completion
     let job;
-    const options = priority
-      ? { priority: priority === 'high' ? 10 : 0 }
-      : undefined;
+    let syncType: string;
 
-    switch (type) {
-      case 'full':
-        job = await scheduleFullSync(accountId, {}, options);
-        break;
-
-      case 'incremental':
-        job = await scheduleIncrementalSync(accountId, {}, options);
-        break;
-
-      case 'folder':
-        if (!folderId) {
-          return NextResponse.json(
-            { error: 'Folder ID required for folder sync' },
-            { status: 400 }
-          );
-        }
-
-        const folder = await db.folder.findUnique({
-          where: { id: folderId },
-        });
-
-        if (!folder || folder.accountId !== accountId) {
-          return NextResponse.json(
-            { error: 'Folder not found' },
-            { status: 404 }
-          );
-        }
-
-        job = await scheduleFolderSync(
-          accountId,
-          folderId,
-          folder.path,
-          {},
-          options
-        );
-        break;
-
-      default:
-        return NextResponse.json(
-          { error: 'Invalid sync type' },
-          { status: 400 }
-        );
+    if (hasCompletedFullSync) {
+      job = await scheduleIncrementalSync(accountId);
+      syncType = 'incremental';
+    } else {
+      job = await scheduleFullSync(accountId);
+      syncType = 'full';
     }
 
     return NextResponse.json({
       success: true,
       jobId: job.id,
-      message: `${type} sync scheduled`,
+      message: `${syncType} sync scheduled`,
     });
   } catch (error) {
     console.error('Failed to schedule sync:', error);

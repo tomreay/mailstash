@@ -35,8 +35,6 @@ export const JOB_CONFIG = {
   },
 } as const;
 
-export type JobConfig = typeof JOB_CONFIG;
-
 // Helper functions for job scheduling
 export function getNextSyncDelay(emailsProcessed: number, provider: 'gmail' | 'imap' = 'gmail'): number {
   const config = JOB_CONFIG[provider];

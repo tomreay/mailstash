@@ -1,6 +1,6 @@
 import { JobHelpers } from 'graphile-worker';
 import { db } from '@/lib/db';
-import { JOB_CONFIG, generateJobKey, getNextSyncDelay } from '../config';
+import { JOB_CONFIG, generateJobKey } from '../config';
 import parser from 'cron-parser';
 
 export type ScheduleOptions = {
@@ -107,19 +107,4 @@ function calculateSyncDelay(syncFrequency?: string | null): number {
     );
     return JOB_CONFIG.gmail.defaultSyncDelay;
   }
-}
-
-export function shouldScheduleNextSync(
-  emailsProcessed: number,
-  provider: 'gmail' | 'imap' = 'gmail'
-): { schedule: boolean; delay: number } {
-  const delay = getNextSyncDelay(emailsProcessed, provider);
-
-  // Always schedule if emails were processed
-  if (emailsProcessed > 0) {
-    return { schedule: true, delay };
-  }
-
-  // For quiet accounts, use longer delay
-  return { schedule: true, delay: JOB_CONFIG[provider].maxSyncDelay };
 }
