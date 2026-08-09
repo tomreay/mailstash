@@ -248,11 +248,10 @@ export class AccountsDAO {
   /**
    * Find user's active accounts
    */
-  static async findActiveAccounts(userId: string, accountId?: string) {
+  static async findAccounts(userId: string, accountId?: string) {
     return await db.emailAccount.findMany({
       where: {
         userId,
-        isActive: true,
         ...(accountId ? { id: accountId } : {}),
       },
       select: { id: true },

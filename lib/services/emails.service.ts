@@ -25,7 +25,7 @@ export class EmailsService {
     const { page, limit, search, accountId, filter } = request;
 
     // Get user's email account(s)
-    const accounts = await AccountsDAO.findActiveAccounts(userId, accountId);
+    const accounts = await AccountsDAO.findAccounts(userId, accountId);
 
     if (accounts.length === 0) {
       return {
@@ -97,7 +97,7 @@ export class EmailsService {
     emailId: string,
     userId: string
   ): Promise<EmailDetail> {
-    const accounts = await AccountsDAO.findActiveAccounts(userId);
+    const accounts = await AccountsDAO.findAccounts(userId);
 
     if (accounts.length === 0) {
       throw new Error('No active accounts found');
