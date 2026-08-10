@@ -1,27 +1,19 @@
 import { NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
 import { AccountsService } from '@/lib/services/accounts.service';
 import { toClientSettings } from '@/lib/types/account-settings';
 import { scheduleAutoDelete } from '@/lib/jobs/queue';
 import { JOB_CONFIG } from '@/lib/jobs/config';
+import { withAuth } from '@/lib/api';
 
-export async function PUT(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const { id } = await params;
-  try {
-    const session = await auth();
-
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+export const PUT = withAuth<{ id: string }>(
+  async (request, { userId, params }) => {
+    const { id } = params;
 
     const body = await request.json();
 
     const settings = await AccountsService.updateAccountSettings(
       id,
-      session.user.id,
+      userId,
       body
     );
 
@@ -32,7 +24,7 @@ export async function PUT(
       try {
         await scheduleAutoDelete(id, {
           runAt: new Date(Date.now() + JOB_CONFIG.autoDelete.minDelay),
-          priority: JOB_CONFIG.priorities.autoDelete
+          priority: JOB_CONFIG.priorities.autoDelete,
         });
         dryRunTriggered = true;
       } catch (error) {
@@ -45,19 +37,5 @@ export async function PUT(
       ...toClientSettings(settings),
       dryRunTriggered,
     });
-  } catch (error) {
-    console.error('Error updating account settings:', error);
-
-    if (
-      error instanceof Error &&
-      error.message === 'Account not found or access denied'
-    ) {
-      return NextResponse.json({ error: 'Account not found' }, { status: 404 });
-    }
-
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
   }
-}
+);
