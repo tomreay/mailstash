@@ -1,42 +1,24 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { retryJob, cancelJob } from '@/lib/jobs/queue';
-import { auth } from '@/lib/auth';
+import { withAuth, parseJson } from '@/lib/api';
 
-interface Params {
-  params: Promise<{
-    id: string;
-  }>;
-}
+const bodySchema = z.object({
+  action: z.enum(['retry', 'cancel']),
+});
 
-export async function POST(request: NextRequest, { params }: Params) {
-  const session = await auth();
+// NOTE: Per-job ownership scoping (verify the job belongs to one of the user's
+// accounts) is tracked as a follow-up on #3 / the unified /api/jobs work (#13).
+export const POST = withAuth<{ id: string }>(async (request, { params }) => {
+  const { action } = await parseJson(request, bodySchema);
 
-  if (!session?.user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  switch (action) {
+    case 'retry':
+      await retryJob(params.id);
+      return NextResponse.json({ success: true, message: 'Job retried' });
+
+    case 'cancel':
+      await cancelJob(params.id);
+      return NextResponse.json({ success: true, message: 'Job cancelled' });
   }
-
-  const { id } = await params;
-  const body = await request.json();
-  const { action } = body;
-
-  try {
-    switch (action) {
-      case 'retry':
-        await retryJob(id);
-        return NextResponse.json({ success: true, message: 'Job retried' });
-
-      case 'cancel':
-        await cancelJob(id);
-        return NextResponse.json({ success: true, message: 'Job cancelled' });
-
-      default:
-        return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
-    }
-  } catch (error) {
-    console.error(`Failed to ${action} job ${id}:`, error);
-    return NextResponse.json(
-      { error: `Failed to ${action} job` },
-      { status: 500 }
-    );
-  }
-}
+});

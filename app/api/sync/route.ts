@@ -1,143 +1,111 @@
 import { NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
+import { z } from 'zod';
 import { db } from '@/lib/db';
-import {
-  scheduleFullSync,
-  scheduleIncrementalSync,
-} from '@/lib/jobs/queue';
+import { scheduleFullSync, scheduleIncrementalSync } from '@/lib/jobs/queue';
 import { SyncResponse } from '@/types';
 import { JobStatusService } from '@/lib/services/job-status.service';
+import { withAuth, parseJson, NotFoundError } from '@/lib/api';
 
-export async function POST(request: Request) {
-  try {
-    const session = await auth();
+const bodySchema = z.object({
+  accountId: z.string().min(1),
+});
 
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+export const POST = withAuth(async (request, { userId }) => {
+  const { accountId } = await parseJson(request, bodySchema);
 
-    // Get the accountId from the request body
-    const body = await request.json();
-    const { accountId } = body;
+  // Get the specific email account (scoped to the user, active only)
+  const account = await db.emailAccount.findFirst({
+    where: {
+      id: accountId,
+      userId,
+      isActive: true,
+    },
+  });
 
-    if (!accountId) {
-      return NextResponse.json(
-        { error: 'Account ID is required' },
-        { status: 400 }
-      );
-    }
+  if (!account) {
+    throw new NotFoundError('Email account not found or unauthorized');
+  }
 
-    // Get the specific email account
-    const account = await db.emailAccount.findFirst({
-      where: {
-        id: accountId,
-        userId: session.user.id, // Ensure the account belongs to the user
-        isActive: true,
-      },
-    });
-
-    if (!account) {
-      return NextResponse.json(
-        { error: 'Email account not found or unauthorized' },
-        { status: 404 }
-      );
-    }
-
-    // Check job status to determine sync type (check for any sync job type)
-    const jobStatus = await db.jobStatus.findFirst({
-      where: {
-        accountId: account.id,
-        jobType: { in: ['incremental_sync', 'full_sync'] },
-      },
-      orderBy: { lastRunAt: 'desc' },
-    });
-
-    // Get Gmail history ID from _SYNC_STATE folder if needed
-    const syncFolder = account.provider === 'gmail' ?
-      await db.folder.findFirst({
-        where: {
-          accountId: account.id,
-          path: '_SYNC_STATE',
-        },
-      }) : null;
-
-    // Schedule appropriate sync job based on sync history
-    let job;
-    if (!jobStatus || !jobStatus.lastRunAt) {
-      // First sync or no previous sync - schedule full sync
-      job = await scheduleFullSync(account.id, {}, { priority: 10 });
-    } else {
-      // Schedule incremental sync
-      job = await scheduleIncrementalSync(
-        account.id,
-        {
-          lastSyncAt: jobStatus.lastRunAt.toISOString(),
-          gmailHistoryId: syncFolder?.lastSyncId || undefined,
-        },
-        { priority: 10 }
-      );
-    }
-
-    const response: SyncResponse = {
-      message: 'Sync scheduled successfully',
+  // Check job status to determine sync type (check for any sync job type)
+  const jobStatus = await db.jobStatus.findFirst({
+    where: {
       accountId: account.id,
-      jobId: job.id,
-    };
+      jobType: { in: ['incremental_sync', 'full_sync'] },
+    },
+    orderBy: { lastRunAt: 'desc' },
+  });
 
-    return NextResponse.json(response);
-  } catch (error) {
-    console.error('Error starting sync:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
-  }
-}
+  // Get Gmail history ID from _SYNC_STATE folder if needed
+  const syncFolder =
+    account.provider === 'gmail'
+      ? await db.folder.findFirst({
+          where: {
+            accountId: account.id,
+            path: '_SYNC_STATE',
+          },
+        })
+      : null;
 
-export async function GET() {
-  try {
-    const session = await auth();
-
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    // Get user's email account
-    const account = await db.emailAccount.findFirst({
-      where: {
-        userId: session.user.id,
-        isActive: true,
-      },
-    });
-
-    if (!account) {
-      const response: SyncResponse = {
-        status: 'idle',
-        lastSyncAt: null,
-        error: null,
-      };
-      return NextResponse.json(response);
-    }
-
-    // Get current sync status from JobStatus
-    const currentStatus = await JobStatusService.getCurrentStatus(
+  // Schedule appropriate sync job based on sync history
+  let job;
+  if (!jobStatus || !jobStatus.lastRunAt) {
+    // First sync or no previous sync - schedule full sync
+    job = await scheduleFullSync(account.id, {}, { priority: 10 });
+  } else {
+    // Schedule incremental sync
+    job = await scheduleIncrementalSync(
       account.id,
-      'sync'
-    );
-
-    const response: SyncResponse = {
-      status: currentStatus.status === 'running' ? 'syncing' :
-              currentStatus.status === 'error' ? 'error' : 'idle',
-      lastSyncAt: currentStatus.lastRunAt?.toISOString() || null,
-      error: currentStatus.error || null,
-    };
-
-    return NextResponse.json(response);
-  } catch (error) {
-    console.error('Error fetching sync status:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
+      {
+        lastSyncAt: jobStatus.lastRunAt.toISOString(),
+        gmailHistoryId: syncFolder?.lastSyncId || undefined,
+      },
+      { priority: 10 }
     );
   }
-}
+
+  const response: SyncResponse = {
+    message: 'Sync scheduled successfully',
+    accountId: account.id,
+    jobId: job.id,
+  };
+
+  return NextResponse.json(response);
+});
+
+export const GET = withAuth(async (_request, { userId }) => {
+  // Get user's email account
+  const account = await db.emailAccount.findFirst({
+    where: {
+      userId,
+      isActive: true,
+    },
+  });
+
+  if (!account) {
+    const response: SyncResponse = {
+      status: 'idle',
+      lastSyncAt: null,
+      error: null,
+    };
+    return NextResponse.json(response);
+  }
+
+  // Get current sync status from JobStatus
+  const currentStatus = await JobStatusService.getCurrentStatus(
+    account.id,
+    'sync'
+  );
+
+  const response: SyncResponse = {
+    status:
+      currentStatus.status === 'running'
+        ? 'syncing'
+        : currentStatus.status === 'error'
+          ? 'error'
+          : 'idle',
+    lastSyncAt: currentStatus.lastRunAt?.toISOString() || null,
+    error: currentStatus.error || null,
+  };
+
+  return NextResponse.json(response);
+});

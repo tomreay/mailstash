@@ -1,25 +1,15 @@
 import { NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
+import { z } from 'zod';
 import { StatsService } from '@/lib/services/stats.service';
+import { withAuth, parseQuery } from '@/lib/api';
 
-export async function GET(request: Request) {
-  try {
-    const session = await auth();
+const querySchema = z.object({
+  accountId: z.string().min(1).optional(),
+});
 
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+export const GET = withAuth(async (request, { userId }) => {
+  const { accountId } = parseQuery(request, querySchema);
 
-    const { searchParams } = new URL(request.url);
-    const accountId = searchParams.get('accountId') || undefined;
-
-    const stats = await StatsService.getUserStats(session.user.id, accountId);
-    return NextResponse.json(stats);
-  } catch (error) {
-    console.error('Error fetching stats:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
-  }
-}
+  const stats = await StatsService.getUserStats(userId, accountId);
+  return NextResponse.json(stats);
+});

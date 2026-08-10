@@ -1,24 +1,11 @@
 import { NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
 import { AccountsService } from '@/lib/services/accounts.service';
 import { toClientSettings } from '@/lib/types/account-settings';
+import { withAuth } from '@/lib/api';
 
-export async function GET(
-  _: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const { id } = await params;
-  try {
-    const session = await auth();
-
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const account = await AccountsService.getAccountDetails(
-      id,
-      session.user.id
-    );
+export const GET = withAuth<{ id: string }>(
+  async (_request, { userId, params }) => {
+    const account = await AccountsService.getAccountDetails(params.id, userId);
 
     // Convert settings dates to strings for client
     const clientAccount = {
@@ -27,52 +14,17 @@ export async function GET(
     };
 
     return NextResponse.json({ account: clientAccount });
-  } catch (error) {
-    console.error('Error fetching account:', error);
-
-    if (error instanceof Error && error.message === 'Account not found') {
-      return NextResponse.json({ error: error.message }, { status: 404 });
-    }
-
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
   }
-}
+);
 
-export async function DELETE(
-  _: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const { id } = await params;
-  try {
-    const session = await auth();
-
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
+export const DELETE = withAuth<{ id: string }>(
+  async (_request, { userId, params }) => {
     // Verify account belongs to user before deleting
-    await AccountsService.validateUserAccess(id, session.user.id);
+    await AccountsService.validateUserAccess(params.id, userId);
 
     // Delete account (cascading deletes will handle related data)
-    await AccountsService.deleteAccount(id);
+    await AccountsService.deleteAccount(params.id);
 
     return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error('Error deleting account:', error);
-
-    if (
-      error instanceof Error &&
-      error.message === 'Account not found or access denied'
-    ) {
-      return NextResponse.json({ error: 'Account not found' }, { status: 404 });
-    }
-
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
   }
-}
+);

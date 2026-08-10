@@ -1,27 +1,27 @@
 import { NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
+import { z } from 'zod';
 import { AccountsService } from '@/lib/services/accounts.service';
 import { toClientSettings } from '@/lib/types/account-settings';
 import { scheduleAutoDelete } from '@/lib/jobs/queue';
 import { JOB_CONFIG } from '@/lib/jobs/config';
+import { withAuth, parseJson } from '@/lib/api';
 
-export async function PUT(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const { id } = await params;
-  try {
-    const session = await auth();
+const bodySchema = z.object({
+  syncFrequency: z.string().min(1).optional(),
+  syncPaused: z.boolean().optional(),
+  autoDeleteMode: z.enum(['off', 'dry-run', 'on']).optional(),
+  deleteDelayHours: z.number().int().min(0).nullable().optional(),
+  deleteAgeMonths: z.number().int().min(0).nullable().optional(),
+  deleteOnlyArchived: z.boolean().optional(),
+});
 
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const body = await request.json();
+export const PUT = withAuth<{ id: string }>(
+  async (request, { userId, params }) => {
+    const body = await parseJson(request, bodySchema);
 
     const settings = await AccountsService.updateAccountSettings(
-      id,
-      session.user.id,
+      params.id,
+      userId,
       body
     );
 
@@ -30,9 +30,9 @@ export async function PUT(
     if (body.autoDeleteMode === 'dry-run') {
       // Mode changed to dry-run, trigger the job
       try {
-        await scheduleAutoDelete(id, {
+        await scheduleAutoDelete(params.id, {
           runAt: new Date(Date.now() + JOB_CONFIG.autoDelete.minDelay),
-          priority: JOB_CONFIG.priorities.autoDelete
+          priority: JOB_CONFIG.priorities.autoDelete,
         });
         dryRunTriggered = true;
       } catch (error) {
@@ -45,19 +45,5 @@ export async function PUT(
       ...toClientSettings(settings),
       dryRunTriggered,
     });
-  } catch (error) {
-    console.error('Error updating account settings:', error);
-
-    if (
-      error instanceof Error &&
-      error.message === 'Account not found or access denied'
-    ) {
-      return NextResponse.json({ error: 'Account not found' }, { status: 404 });
-    }
-
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
   }
-}
+);

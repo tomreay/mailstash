@@ -1,34 +1,29 @@
 import { NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
+import { z } from 'zod';
 import { EmailsService } from '@/lib/services/emails.service';
+import { withAuth, parseQuery } from '@/lib/api';
 
-export async function GET(request: Request) {
-  try {
-    const session = await auth();
+const querySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  search: z.string().trim().min(1).optional(),
+  accountId: z.string().min(1).optional(),
+  filter: z.string().min(1).optional(),
+});
 
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+export const GET = withAuth(async (request, { userId }) => {
+  const { page, limit, search, accountId, filter } = parseQuery(
+    request,
+    querySchema
+  );
 
-    const { searchParams } = new URL(request.url);
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '20');
-    const search = searchParams.get('search') || undefined;
-    const accountId = searchParams.get('accountId') || undefined;
+  const response = await EmailsService.getUserEmails(userId, {
+    page,
+    limit,
+    search,
+    accountId,
+    filter,
+  });
 
-    const response = await EmailsService.getUserEmails(session.user.id, {
-      page,
-      limit,
-      search,
-      accountId,
-    });
-
-    return NextResponse.json(response);
-  } catch (error) {
-    console.error('Error fetching emails:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
-  }
-}
+  return NextResponse.json(response);
+});

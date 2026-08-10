@@ -13,12 +13,12 @@ const server = new Server({
   respectForwardedHeaders: true,
   generateUrl: (req, { host, path, id }) => {
     // Get protocol from forwarded headers or request
-    const protocol = req.headers.get('x-forwarded-proto') ||
-                     req.headers.get('x-scheme') ||
-                     (req.url?.startsWith('https') ? 'https' : 'http');
-    const hostname = req.headers.get('x-forwarded-host') ||
-                    req.headers.get('host') ||
-                    host;
+    const protocol =
+      req.headers.get('x-forwarded-proto') ||
+      req.headers.get('x-scheme') ||
+      (req.url?.startsWith('https') ? 'https' : 'http');
+    const hostname =
+      req.headers.get('x-forwarded-host') || req.headers.get('host') || host;
 
     // Ensure we use HTTPS in production
     const finalProtocol = hostname?.includes('localhost') ? protocol : 'https';

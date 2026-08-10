@@ -50,17 +50,23 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       console.error('OAuth error:', error);
-      return NextResponse.redirect(new URL('/accounts?error=oauth_failed', baseUrl));
+      return NextResponse.redirect(
+        new URL('/accounts?error=oauth_failed', baseUrl)
+      );
     }
 
     if (!code || !state) {
-      return NextResponse.redirect(new URL('/accounts?error=invalid_callback', baseUrl));
+      return NextResponse.redirect(
+        new URL('/accounts?error=invalid_callback', baseUrl)
+      );
     }
 
     // Verify the state matches the current user
     if (state !== session.user.id) {
       console.error('State mismatch - possible CSRF attack');
-      return NextResponse.redirect(new URL('/accounts?error=state_mismatch', baseUrl));
+      return NextResponse.redirect(
+        new URL('/accounts?error=state_mismatch', baseUrl)
+      );
     }
 
     try {
@@ -82,7 +88,9 @@ export async function GET(request: NextRequest) {
       if (!tokenResponse.ok) {
         const errorData = await tokenResponse.text();
         console.error('Token exchange failed:', errorData);
-        return NextResponse.redirect(new URL('/accounts?error=token_exchange_failed', baseUrl));
+        return NextResponse.redirect(
+          new URL('/accounts?error=token_exchange_failed', baseUrl)
+        );
       }
 
       const tokens = await tokenResponse.json();
@@ -96,12 +104,16 @@ export async function GET(request: NextRequest) {
 
       if (!userInfoResponse.ok) {
         console.error('Failed to get user info');
-        return NextResponse.redirect(new URL('/accounts?error=userinfo_failed', baseUrl));
+        return NextResponse.redirect(
+          new URL('/accounts?error=userinfo_failed', baseUrl)
+        );
       }
 
       const googleUser = await userInfoResponse.json();
 
-      console.log(`Adding Gmail account: ${googleUser.email} (gmailId: ${googleUser.id}) for user: ${session.user.id}`);
+      console.log(
+        `Adding Gmail account: ${googleUser.email} (gmailId: ${googleUser.id}) for user: ${session.user.id}`
+      );
 
       // Create or update the EmailAccount
       await db.emailAccount.upsert({
@@ -136,10 +148,14 @@ export async function GET(request: NextRequest) {
 
       console.log(`Successfully added Gmail account ${googleUser.email}`);
 
-      return NextResponse.redirect(new URL('/accounts?success=gmail_connected', baseUrl));
+      return NextResponse.redirect(
+        new URL('/accounts?success=gmail_connected', baseUrl)
+      );
     } catch (error) {
       console.error('Error in Gmail OAuth callback:', error);
-      return NextResponse.redirect(new URL('/accounts?error=oauth_error', baseUrl));
+      return NextResponse.redirect(
+        new URL('/accounts?error=oauth_error', baseUrl)
+      );
     }
   }
 
