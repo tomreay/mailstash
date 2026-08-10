@@ -1,34 +1,20 @@
 import { NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
 import { EmailsService } from '@/lib/services/emails.service';
+import { withAuth } from '@/lib/api';
 
-export async function GET(request: Request) {
-  try {
-    const session = await auth();
+export const GET = withAuth(async (request, { userId }) => {
+  const { searchParams } = new URL(request.url);
+  const page = parseInt(searchParams.get('page') || '1');
+  const limit = parseInt(searchParams.get('limit') || '20');
+  const search = searchParams.get('search') || undefined;
+  const accountId = searchParams.get('accountId') || undefined;
 
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+  const response = await EmailsService.getUserEmails(userId, {
+    page,
+    limit,
+    search,
+    accountId,
+  });
 
-    const { searchParams } = new URL(request.url);
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '20');
-    const search = searchParams.get('search') || undefined;
-    const accountId = searchParams.get('accountId') || undefined;
-
-    const response = await EmailsService.getUserEmails(session.user.id, {
-      page,
-      limit,
-      search,
-      accountId,
-    });
-
-    return NextResponse.json(response);
-  } catch (error) {
-    console.error('Error fetching emails:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
-  }
-}
+  return NextResponse.json(response);
+});

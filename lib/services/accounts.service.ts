@@ -8,6 +8,7 @@ import {
   EmailAccountSettings,
   UpdateEmailAccountSettings,
 } from '@/lib/types/account-settings';
+import { NotFoundError } from '@/lib/api/errors';
 
 export interface CreateAccountRequest {
   provider: string;
@@ -111,7 +112,7 @@ export class AccountsService {
     const account = await AccountsDAO.findAccountDetails(accountId, userId);
 
     if (!account) {
-      throw new Error('Account not found');
+      throw new NotFoundError('Account not found');
     }
 
     return account;
@@ -127,7 +128,7 @@ export class AccountsService {
     const account = await AccountsDAO.findByIdAndUserId(accountId, userId);
 
     if (!account) {
-      throw new Error('Account not found or access denied');
+      throw new NotFoundError('Account not found');
     }
   }
 

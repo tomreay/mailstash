@@ -1,26 +1,21 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
+import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { JobStatusService, AutoDeleteJobMetadata } from '@/lib/services/job-status.service';
+import {
+  JobStatusService,
+  AutoDeleteJobMetadata,
+} from '@/lib/services/job-status.service';
 import { DryRunStatusData } from '@/types/dry-run';
+import { withAuth, NotFoundError } from '@/lib/api';
 
-export async function GET(
-  _: NextRequest,
-  context: { params: Promise<{ id: string }> }
-) {
-  try {
-    const session = await auth();
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const { id: accountId } = await context.params;
+export const GET = withAuth<{ id: string }>(
+  async (_request, { userId, params }) => {
+    const { id: accountId } = params;
 
     // Verify the account belongs to the user and get current dry-run job ID
     const account = await db.emailAccount.findFirst({
       where: {
         id: accountId,
-        userId: session.user.id,
+        userId,
       },
       include: {
         settings: true,
@@ -28,7 +23,7 @@ export async function GET(
     });
 
     if (!account) {
-      return NextResponse.json({ error: 'Account not found' }, { status: 404 });
+      throw new NotFoundError('Account not found');
     }
 
     // Get auto-delete job status
@@ -38,7 +33,10 @@ export async function GET(
     );
 
     // Check if there's a queued job that hasn't started yet
-    const hasQueuedJob = await JobStatusService.getQueuedJob(accountId, 'auto_delete');
+    const hasQueuedJob = await JobStatusService.getQueuedJob(
+      accountId,
+      'auto_delete'
+    );
 
     // Debug logging
     console.log('[dry-run-status] Current job status:', {
@@ -115,7 +113,8 @@ export async function GET(
 
     // For dry run, we don't track granular progress during processing
     // Progress tracking is not meaningful for this operation
-    const totalEmails = status === 'completed' ? (metadata.count || markedCount) : 0;
+    const totalEmails =
+      status === 'completed' ? metadata.count || markedCount : 0;
     const processedEmails = status === 'completed' ? totalEmails : 0;
 
     const response: DryRunStatusData = {
@@ -129,11 +128,5 @@ export async function GET(
     };
 
     return NextResponse.json(response);
-  } catch (error) {
-    console.error('Dry-run status error:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch dry-run status' },
-      { status: 500 }
-    );
   }
-}
+);
