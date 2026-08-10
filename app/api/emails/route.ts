@@ -1,19 +1,28 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { EmailsService } from '@/lib/services/emails.service';
-import { withAuth } from '@/lib/api';
+import { withAuth, parseQuery } from '@/lib/api';
+
+const querySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  search: z.string().trim().min(1).optional(),
+  accountId: z.string().min(1).optional(),
+  filter: z.string().min(1).optional(),
+});
 
 export const GET = withAuth(async (request, { userId }) => {
-  const { searchParams } = new URL(request.url);
-  const page = parseInt(searchParams.get('page') || '1');
-  const limit = parseInt(searchParams.get('limit') || '20');
-  const search = searchParams.get('search') || undefined;
-  const accountId = searchParams.get('accountId') || undefined;
+  const { page, limit, search, accountId, filter } = parseQuery(
+    request,
+    querySchema
+  );
 
   const response = await EmailsService.getUserEmails(userId, {
     page,
     limit,
     search,
     accountId,
+    filter,
   });
 
   return NextResponse.json(response);

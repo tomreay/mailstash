@@ -1,11 +1,16 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { getActiveJobs, getPendingJobs, getFailedJobs } from '@/lib/jobs/queue';
 import { getWorkerStatus } from '@/lib/jobs/worker';
-import { withAuth } from '@/lib/api';
+import { withAuth, parseQuery } from '@/lib/api';
+
+const querySchema = z.object({
+  view: z.enum(['summary', 'active', 'pending', 'failed']).default('summary'),
+  limit: z.coerce.number().int().min(1).max(500).default(100),
+});
 
 export const GET = withAuth(async request => {
-  const { searchParams } = new URL(request.url);
-  const view = searchParams.get('view') || 'summary';
+  const { view, limit } = parseQuery(request, querySchema);
 
   if (view === 'active') {
     const activeJobs = await getActiveJobs();
@@ -16,7 +21,6 @@ export const GET = withAuth(async request => {
   }
 
   if (view === 'pending') {
-    const limit = parseInt(searchParams.get('limit') || '100');
     const pendingJobs = await getPendingJobs(limit);
     return NextResponse.json({
       status: 'success',
@@ -25,7 +29,6 @@ export const GET = withAuth(async request => {
   }
 
   if (view === 'failed') {
-    const limit = parseInt(searchParams.get('limit') || '100');
     const failedJobs = await getFailedJobs(limit);
     return NextResponse.json({
       status: 'success',

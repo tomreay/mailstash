@@ -1,15 +1,25 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { AccountsService } from '@/lib/services/accounts.service';
 import { toClientSettings } from '@/lib/types/account-settings';
 import { scheduleAutoDelete } from '@/lib/jobs/queue';
 import { JOB_CONFIG } from '@/lib/jobs/config';
-import { withAuth } from '@/lib/api';
+import { withAuth, parseJson } from '@/lib/api';
+
+const bodySchema = z.object({
+  syncFrequency: z.string().min(1).optional(),
+  syncPaused: z.boolean().optional(),
+  autoDeleteMode: z.enum(['off', 'dry-run', 'on']).optional(),
+  deleteDelayHours: z.number().int().min(0).nullable().optional(),
+  deleteAgeMonths: z.number().int().min(0).nullable().optional(),
+  deleteOnlyArchived: z.boolean().optional(),
+});
 
 export const PUT = withAuth<{ id: string }>(
   async (request, { userId, params }) => {
     const { id } = params;
 
-    const body = await request.json();
+    const body = await parseJson(request, bodySchema);
 
     const settings = await AccountsService.updateAccountSettings(
       id,
