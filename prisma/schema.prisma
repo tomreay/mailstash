@@ -238,6 +238,7 @@ model User {
   accounts      Account[]
   sessions      Session[]
   emailAccounts EmailAccount[]
+  refreshTokens RefreshToken[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -282,4 +283,26 @@ model VerificationToken {
   expires    DateTime
 
   @@unique([identifier, token])
+}
+
+/// Long-lived, device-bound refresh tokens for API (mobile) clients. The raw
+/// token is never stored — only its SHA-256 hash — so a DB leak can't be used
+/// to mint access tokens. Rotated on each refresh; revoked on logout.
+model RefreshToken {
+  id        String    @id @default(cuid())
+  /// SHA-256 hash of the opaque refresh token (hex).
+  tokenHash String    @unique
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Opaque client-supplied device identifier, so one device's token can be
+  /// rotated/revoked independently of others.
+  deviceId  String
+  expiresAt DateTime
+  /// Set when the token is rotated or explicitly revoked (logout).
+  revokedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
 }
