@@ -1,18 +1,18 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { db } from '@/lib/db';
 import { scheduleFullSync, scheduleIncrementalSync } from '@/lib/jobs/queue';
 import { SyncResponse } from '@/types';
 import { JobStatusService } from '@/lib/services/job-status.service';
-import { withAuth, NotFoundError, ValidationError } from '@/lib/api';
+import { withAuth, NotFoundError, parseJson } from '@/lib/api';
+
+const bodySchema = z.object({
+  accountId: z.string().min(1),
+});
 
 export const POST = withAuth(async (request, { userId }) => {
   // Get the accountId from the request body
-  const body = await request.json();
-  const { accountId } = body;
-
-  if (!accountId) {
-    throw new ValidationError('Account ID is required');
-  }
+  const { accountId } = await parseJson(request, bodySchema);
 
   // Get the specific email account
   const account = await db.emailAccount.findFirst({

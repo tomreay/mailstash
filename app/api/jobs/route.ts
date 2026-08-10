@@ -1,11 +1,15 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { getActiveJobs, getFailedJobs, getPendingJobs } from '@/lib/jobs/queue';
-import { withAuth } from '@/lib/api';
+import { withAuth, parseQuery } from '@/lib/api';
+
+const querySchema = z.object({
+  status: z.enum(['all', 'active', 'pending', 'failed']).default('all'),
+  limit: z.coerce.number().int().min(1).max(500).default(100),
+});
 
 export const GET = withAuth(async request => {
-  const searchParams = new URL(request.url).searchParams;
-  const status = searchParams.get('status') || 'all';
-  const limit = parseInt(searchParams.get('limit') || '100', 10);
+  const { status, limit } = parseQuery(request, querySchema);
 
   let jobs;
   switch (status) {

@@ -1,12 +1,16 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { scheduleFullSync, scheduleIncrementalSync } from '@/lib/jobs/queue';
 import { db } from '@/lib/db';
 import { JobStatusService } from '@/lib/services/job-status.service';
-import { withAuth, NotFoundError } from '@/lib/api';
+import { withAuth, NotFoundError, parseJson } from '@/lib/api';
+
+const bodySchema = z.object({
+  accountId: z.string().min(1),
+});
 
 export const POST = withAuth(async (request, { userId }) => {
-  const body = await request.json();
-  const { accountId } = body;
+  const { accountId } = await parseJson(request, bodySchema);
 
   // Verify the account belongs to the user
   const account = await db.emailAccount.findFirst({

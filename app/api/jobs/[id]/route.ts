@@ -1,11 +1,15 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { retryJob, cancelJob } from '@/lib/jobs/queue';
-import { withAuth, ValidationError } from '@/lib/api';
+import { withAuth, parseJson } from '@/lib/api';
+
+const bodySchema = z.object({
+  action: z.enum(['retry', 'cancel']),
+});
 
 export const POST = withAuth<{ id: string }>(async (request, { params }) => {
   const { id } = params;
-  const body = await request.json();
-  const { action } = body;
+  const { action } = await parseJson(request, bodySchema);
 
   switch (action) {
     case 'retry':
@@ -15,8 +19,5 @@ export const POST = withAuth<{ id: string }>(async (request, { params }) => {
     case 'cancel':
       await cancelJob(id);
       return NextResponse.json({ success: true, message: 'Job cancelled' });
-
-    default:
-      throw new ValidationError('Invalid action');
   }
 });
