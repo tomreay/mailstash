@@ -2,6 +2,7 @@ import { promises as fs } from 'fs'
 import { join } from 'path'
 import { EmailMessage, EmailAttachment } from '@/types/email'
 import { db } from '@/lib/db'
+import { extractBodyText } from '@/lib/search/body-text'
 
 export class EmailStorage {
   private readonly emailStoragePath: string
@@ -27,6 +28,10 @@ export class EmailStorage {
     // Store EML file
     const emlPath = join(accountPath, `${email.id}.eml`)
     await fs.writeFile(emlPath, rawContent)
+
+    // Plain-text body for full-text search. The EML on disk stays the source
+    // of truth; this is an indexable copy.
+    const bodyText = await extractBodyText(rawContent)
 
     // Store attachments if any
     const attachmentPaths: string[] = []
@@ -57,6 +62,7 @@ export class EmailStorage {
         category: email.category,
         labels: email.labels ? JSON.stringify(email.labels) : null,
         emlPath,
+        bodyText,
         size: email.size,
         gmailId: email.id,
         gmailThreadId: email.threadId,
@@ -80,6 +86,7 @@ export class EmailStorage {
         category: email.category,
         labels: email.labels ? JSON.stringify(email.labels) : null,
         emlPath,
+        bodyText,
         size: email.size,
         gmailId: email.id,
         gmailThreadId: email.threadId,
