@@ -82,7 +82,9 @@ model Email {
   replyTo       String?
   date          DateTime
   
-  // Content (removed - stored in EML files only)
+  // Content — full bodies live in the EML file on disk; bodyText is a
+  // plain-text copy kept in the DB so it can be full-text searched.
+  bodyText      String?  @db.Text
   
   // Metadata
   hasAttachments Boolean  @default(false)
@@ -131,6 +133,9 @@ model Email {
   @@index([accountId, folderId])
   @@index([accountId, date])
   @@index([syncedAt])
+  // searchVector is a generated tsvector column with a GIN index, added in
+  // migration 20260821000000_add_email_full_text_search. Prisma cannot express
+  // either, so both are managed as raw SQL and queried via $queryRaw.
   @@map("emails")
 }
 

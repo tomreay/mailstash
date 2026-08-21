@@ -13,6 +13,7 @@
     "db:migrate:deploy": "dotenv -e .env.local -- prisma migrate deploy",
     "db:studio": "dotenv -e .env.local -- prisma studio",
     "db:generate": "dotenv -e .env.local -- prisma generate",
+    "db:backfill-body-text": "dotenv -e .env.local -- tsx scripts/backfill-body-text.ts",
     "worker": "node scripts/start-worker.mjs",
     "worker:setup": "node scripts/setup-graphile-worker.js"
   },

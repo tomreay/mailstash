@@ -92,6 +92,7 @@ export default async function EmailsPage({ searchParams }: EmailsPageProps) {
           currentPage={page}
           searchQuery={search}
           accountId={accountId}
+          accountName={accountName}
           filter={filter}
         />
       </main>

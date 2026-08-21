@@ -13,6 +13,7 @@ interface EmailListProps {
   currentPage: number;
   searchQuery: string;
   accountId?: string;
+  accountName?: string | null;
   filter?: string;
 }
 
@@ -23,6 +24,7 @@ export function EmailList({
   currentPage,
   searchQuery,
   accountId,
+  accountName,
   filter,
 }: EmailListProps) {
   return (
@@ -31,6 +33,7 @@ export function EmailList({
       <EmailSearch
         initialQuery={searchQuery}
         accountId={accountId}
+        accountName={accountName}
         filter={filter}
       />
 
